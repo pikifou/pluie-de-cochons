@@ -1,0 +1,26 @@
+{
+ "id": "./",
+ "name": "Pluie de Cochons",
+ "short_name": "Cochons",
+ "lang": "fr",
+ "orientation": "any",
+ "description": "Les tables de multiplication avec des cochons qui tombent du ciel.",
+ "start_url": "./",
+ "scope": "./",
+ "display": "fullscreen",
+ "background_color": "#070a24",
+ "theme_color": "#070a24",
+ "icons": [
+  {
+   "src": "icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any maskable"
+  }
+ ]
+}
