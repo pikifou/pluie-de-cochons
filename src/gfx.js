@@ -408,7 +408,11 @@ G.texte = function (ctx, s, x, y, taille, couleur, o) {
   ctx.fillText(s, x, y);
   ctx.shadowBlur = 0;
 };
-G.largeur = function (ctx, s, taille, police) { ctx.font = G.police(police || 'texte', taille); return ctx.measureText(s).width; };
+G.largeur = function (ctx, s, taille, police) {
+  police = police || 'texte';
+  if (police === 'texte' && /[0-9]/.test(s)) { police = 'titre'; taille *= 0.74; }   // même règle que G.texte
+  ctx.font = G.police(police, taille); return ctx.measureText(s).width;
+};
 
 // ---------- Formes néon ----------
 G.rectNeon = function (ctx, x, y, w, h, couleur, opts) {

@@ -45,7 +45,8 @@ function aller(e) {
 }
 function parent() {
   switch (ecran) {
-    case 'coupes': case 'tables': return 'titre';
+    case 'coupes': case 'tables': case 'astuces': return 'titre';
+    case 'cartes': return 'astuces';
     case 'depart': return 'coupes';
     case 'resultats': return FIN && FIN.mode === 'entrainement' ? 'tables' : 'coupes';
     default: return 'titre';
@@ -200,7 +201,9 @@ function ecranTitre(dt) {
     allerPleinEcran();
     aller('coupes');
   });
-  bouton('tables', cx - bw2 / 2, y1 + bh + 20, bw2, bh * 0.75, { texte: 'MES TABLES', taille: bh * 0.3, police: 'titre', couleur: C.cyan }, () => aller('tables'));
+  const bw3 = (bw2 - 16) / 2;
+  bouton('tables', cx - bw2 / 2, y1 + bh + 18, bw3, bh * 0.78, { texte: 'MES TABLES', taille: Math.min(bh * 0.24, bw3 / 11), police: 'titre', couleur: C.cyan }, () => aller('tables'));
+  bouton('astuces', cx + 8, y1 + bh + 18, bw3, bh * 0.78, { texte: 'ASTUCES', taille: Math.min(bh * 0.24, bw3 / 8), police: 'titre', couleur: C.violet }, () => aller('astuces'));
 
   boutonsSon(20, H - 84, 64);
   if (installEvt) bouton('installer', W - 230, H - 84, 210, 64, { texte: 'Installer', taille: 26, couleur: C.vert }, () => { installEvt.prompt(); installEvt = null; });
@@ -1102,6 +1105,246 @@ function resultatsEntrainement(dt) {
 }
 
 // =====================================================================
+// ASTUCES : flash cards avec explications
+// =====================================================================
+const NOM_ASTUCE = { 1: 'rien ne change', 2: 'le double', 3: 'double + 1 fois', 4: 'double du double', 5: 'moitié de ×10', 6: '×5 + 1 fois', 7: '×5 + ×2', 8: '3 doubles', 9: '×10 − 1 fois', 10: '+ un zéro' };
+let F = null;   // paquet de cartes en cours
+
+function ecranAstuces(dt) {
+  boutonRetour(20, 20);
+  G.texteFige(ctx, 'ASTUCES', W / 2, PORTRAIT ? 120 : 46, PORTRAIT ? 44 : 38, C.violet, { police: 'titre', lueur: C.violet, contour: '#1a0630' });
+  G.texte(ctx, 'Des cartes pour calculer plus vite', W / 2, PORTRAIT ? 172 : 90, 26, '#dff', {});
+  const cols = PORTRAIT ? 2 : 5, gap = 14;
+  const top = PORTRAIT ? 220 : 124;
+  const bw = Math.min(PORTRAIT ? 320 : 220, (W - 40 - gap * (cols - 1)) / cols);
+  const bh = PORTRAIT ? 104 : 96;
+  for (let t = 1; t <= 10; t++) {
+    const i = t - 1, r = Math.floor(i / cols), c = i % cols;
+    const x = W / 2 - (cols * bw + (cols - 1) * gap) / 2 + c * (bw + gap), y = top + r * (bh + gap);
+    const connue = L.tableConnue(sv.maitrise, t);
+    bouton('as' + t, x, y, bw, bh, { texte: '×' + t, taille: bh * 0.36, police: 'titre', dy: -bh * 0.12, couleur: connue ? C.vert : C.cyan, sous: NOM_ASTUCE[t], tailleSous: Math.min(20, bw / 9), flou: 8 }, () => lancerCartes(t));
+  }
+  const rows = Math.ceil(10 / cols);
+  const yb = top + rows * (bh + gap) + 10;
+  const bw2 = Math.min(460, W - 40);
+  bouton('difficiles', W / 2 - bw2 / 2, yb, bw2, 84, { texte: 'MES CARTES DIFFICILES', taille: Math.min(24, bw2 / 22), police: 'titre', couleur: C.rose, dy: -10, sous: 'les 10 que tu connais le moins', tailleSous: 18 }, () => lancerCartes(null));
+}
+
+function lancerCartes(table) {
+  F = { table, cartes: L.paquet(sv.maitrise, table), i: 0, etape: table ? 'astuce' : 'devant', t: 0, flip: 0, sues: 0, vues: 0, rejouees: {}, resultats: [], tCarte: 0 };
+  if (ecran === 'cartes') { tEcran = 0; S.sfx('whoosh'); } else aller('cartes');
+}
+
+function carteCourante() { return F.cartes[F.i]; }
+function retourner() {
+  if (F.etape !== 'devant' || F.flip > 0) return;
+  F.secondes = F.tCarte;
+  F.flip = 0.0001; S.sfx('whoosh');
+}
+function repondreCarte(savais) {
+  const q = carteCourante();
+  L.noter(sv.maitrise, q.a, q.b, savais, savais ? F.secondes : null);
+  sauver();
+  const k = L.cle(q.a, q.b);
+  const premiere = !F.rejouees[k];
+  if (savais) {
+    if (premiere) F.sues++;
+    S.sfx('parfait');
+    if (F.secondes < 3) G.pop('ÉCLAIR !', W / 2, H * 0.3, { taille: 54, couleur: C.jaune, duree: 1.1 });
+    G.eclat(W / 2, H * 0.45, 40, [C.vert, C.jaune, '#fff'], 600, { tourne: true, taille: 9, duree: 1 });
+  } else {
+    S.sfx('oh');
+    // la carte revient un peu plus loin (deux fois au plus)
+    F.rejouees[k] = (F.rejouees[k] || 0) + 1;
+    if (F.rejouees[k] <= 2) F.cartes.splice(Math.min(F.i + 3, F.cartes.length), 0, { a: q.b, b: q.a });
+  }
+  if (premiere) { F.vues++; F.resultats.push(savais); }
+  F.i++;
+  if (F.i >= F.cartes.length) {
+    F.etape = 'fin'; F.t = 0;
+    const n = F.sues;
+    setTimeout(() => { S.sfx(n >= 8 ? 'trophee' : 'parfait'); S.voix(n >= 9 ? 'parfait' : n >= 7 ? 'bravo' : 'super'); }, 300);
+  } else { F.etape = 'devant'; F.flip = 0; F.t = 0; F.tCarte = 0; }
+}
+
+function dire(q) {
+  try {
+    if (!window.speechSynthesis) return;
+    const x = L.astuce(q.a, q.b);
+    const lisible = s2 => s2.replace(/×/g, ' fois ').replace(/−/g, ' moins ').replace(/→/g, ', ').replace(/=/g, ' égale ');
+    const u = new SpeechSynthesisUtterance(lisible(`${q.a} × ${q.b} = ${x.resultat}. ${x.titre}. ${x.calcul}.`));
+    u.lang = 'fr-FR'; u.rate = 0.9;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  } catch (e) {}
+}
+
+function ecranCartes(dt) {
+  if (!F) { ecran = 'astuces'; return; }
+  F.t += dt;
+  if (F.etape === 'devant' && !F.flip) F.tCarte += dt;
+  if (F.flip > 0 && F.flip < 1) { F.flip = Math.min(1, F.flip + dt / 0.35); if (F.flip >= 1) F.etape = 'dos'; }
+  boutonRetour(20, 20);
+  const titre = F.table ? 'TABLE DE ' + F.table : 'CARTES DIFFICILES';
+  G.texteFige(ctx, titre, W / 2, PORTRAIT ? 120 : 44, PORTRAIT ? 36 : 30, C.violet, { police: 'titre', lueur: C.violet, contour: '#1a0630' });
+  if (F.etape === 'fin') return finCartes();
+
+  // points de progression
+  if (F.etape !== 'astuce') {
+    const n = F.cartes.length, py = PORTRAIT ? 168 : 82, pas = Math.min(26, (W - 80) / n);
+    for (let k = 0; k < n; k++) {
+      const x = W / 2 + (k - (n - 1) / 2) * pas;
+      ctx.fillStyle = k < F.i ? C.vert : k === F.i ? C.jaune : '#2a3070';
+      ctx.fillRect(x - 6, py - 6, 12, 12);
+    }
+  }
+  const cw = Math.min(W - 32, PORTRAIT ? 660 : 820), ch = PORTRAIT ? Math.min(H - 330, 1100) : H - 240;
+  const cx = W / 2, cy = (PORTRAIT ? 200 : 104) + ch / 2;
+  if (F.etape === 'astuce') return carteAstuceTable(cx, cy, cw, ch);
+
+  const q = carteCourante();
+  // entrée de la carte
+  const entree = G.sortie(F.t * 4);
+  const flipK = F.flip <= 0 ? 1 : Math.abs(Math.cos(Math.PI * F.flip));
+  const dos = F.flip >= 0.5;
+  ctx.save();
+  ctx.translate(cx + (1 - entree) * W * 0.7, cy);
+  ctx.scale(flipK, 1);
+  G.rectNeon(ctx, -cw / 2, -ch / 2, cw, ch, dos ? C.vert : C.violet, { fond: dos ? 'rgba(8,30,40,0.95)' : 'rgba(22,14,64,0.95)', flou: 20, epaisseur: 4, coin: 16 });
+  if (!dos) devantCarte(q, cw, ch); else dosCarte(q, cw, ch);
+  ctx.restore();
+  if (!dos) bouton('carte', cx - cw / 2, cy - ch / 2, cw, ch, { couleur: 'rgba(0,0,0,0)', fond: 'rgba(0,0,0,0)', flou: 0, epaisseur: 0.01 }, retourner);
+  if (F.etape === 'dos' && window.speechSynthesis) bouton('ecouter', cx + cw / 2 - 70, cy + ch / 2 - 70, 56, 56, { couleur: C.violet, dessin: iconeHP }, () => dire(q));
+
+  // boutons du bas
+  const by = cy + ch / 2 + 18, bh = Math.min(84, H - by - 14);
+  const bw = Math.min(300, (W - 48) / 2);
+  if (F.etape === 'devant' && !F.flip) {
+    bouton('retourner', W / 2 - Math.min(420, W - 40) / 2, by, Math.min(420, W - 40), bh, { texte: 'RETOURNER', taille: 28, police: 'titre', couleur: C.jaune, flou: 18 + Math.sin(temps * 5) * 6 }, retourner);
+  } else if (F.etape === 'dos') {
+    bouton('pasencore', W / 2 - bw - 8, by, bw, bh, { texte: 'PAS ENCORE', taille: Math.min(24, bw / 11), police: 'titre', couleur: '#ff9d3c' }, () => repondreCarte(false));
+    bouton('savais', W / 2 + 8, by, bw, bh, { texte: 'JE SAVAIS !', taille: Math.min(24, bw / 11), police: 'titre', couleur: C.vert, flou: 20 }, () => repondreCarte(true));
+  }
+}
+
+function devantCarte(q, cw, ch) {
+  const ts = Math.min(cw / 5.2, 120);
+  ctx.font = G.police('titre', ts);
+  const parts = [[String(q.a), C.cyan], ['×', '#fff'], [String(q.b), C.rose]];
+  const esp = ts * 0.4;
+  const tot = parts.reduce((s2, p) => s2 + ctx.measureText(p[0]).width, 0) + esp * 2;
+  let x = -tot / 2;
+  for (const [s2, c] of parts) { G.texte(ctx, s2, x, -ch * 0.08, ts, c, { police: 'titre', align: 'left', lueur: c }); x += ctx.measureText(s2).width + esp; }
+  G.texte(ctx, 'Combien de cochons dans la grange ?', 0, ch * 0.16, Math.min(28, cw / 22), '#cfe', {});
+  G.texte(ctx, 'Réponds dans ta tête, puis retourne la carte', 0, ch * 0.26, Math.min(22, cw / 28), '#8f98d8', {});
+  // petite barre de temps : un éclair si tu retournes vite
+  const bw = cw * 0.6, k = Math.min(1, F.tCarte / 3);
+  ctx.fillStyle = '#2a3070'; ctx.fillRect(-bw / 2, ch * 0.38, bw, 10);
+  ctx.fillStyle = k < 1 ? C.jaune : '#5b63a8'; ctx.fillRect(-bw / 2, ch * 0.38, bw * (1 - k), 10);
+}
+
+function dosCarte(q, cw, ch) {
+  const x = L.astuce(q.a, q.b);
+  const large = !PORTRAIT && cw > 640;
+  const colTexte = large ? -cw / 2 + cw * 0.26 : 0;
+  const lt = large ? cw * 0.46 : cw - 48;
+  let y = -ch / 2 + 56;
+  const eq = `${q.a} × ${q.b} = ${x.resultat}`;
+  const te = Math.min(64, 64 * lt / G.largeur(ctx, eq, 64, 'titre'));
+  G.texte(ctx, eq, colTexte, y, te, C.vert, { police: 'titre', lueur: C.vert, contour: '#06102a' });
+  y += te * 0.6 + 36;
+  G.texte(ctx, x.titre, colTexte, y, Math.min(32, 32 * lt / G.largeur(ctx, x.titre, 32)), C.jaune, { lueur: C.jaune, flou: 8 });
+  y += 48;
+  const tc = Math.min(34, 34 * lt / G.largeur(ctx, x.calcul, 34, 'titre'));
+  G.texte(ctx, x.calcul, colTexte, y, tc, '#fff', { police: 'titre' });
+  y += tc + 22;
+  for (const l of x.lignes) {
+    const tl = Math.min(22, 22 * lt / G.largeur(ctx, l, 22));
+    G.texte(ctx, l, colTexte, y, tl, '#cfe', {}); y += tl + 14;
+  }
+  // la grille découpée
+  let zx, zy, zw, zh;
+  if (large) { zx = 24; zy = -ch / 2 + 40; zw = cw / 2 - 40; zh = ch - 120; }
+  else { zx = -cw / 2 + 20; zy = y + 6; zw = cw - 40; zh = ch / 2 - y - 20; }
+  dessinerDecoupe(x, zx, zy, zw, zh);
+}
+
+function dessinerDecoupe(x, zx, zy, zw, zh) {
+  if (zh < 60) return;
+  const rangs = x.groupes.reduce((s2, g) => s2 + g.rangs, 0);
+  const n = x.n;
+  const c = Math.min(46, (zw - 90) / n, zh / rangs);
+  const gw = c * n;
+  const gx = zx + (zw - 90 - gw) / 2, gy = zy + (zh - c * rangs) / 2;
+  const couleurs = [C.rose, C.cyan, C.jaune, C.vert];
+  let r = 0;
+  x.groupes.forEach((g, gi) => {
+    const coul = couleurs[gi % couleurs.length];
+    for (let j = 0; j < g.rangs; j++) {
+      const enleve = x.retire && r + j >= rangs - x.retire;
+      for (let i = 0; i < n; i++) {
+        const px = gx + i * c, py = gy + (r + j) * c;
+        if (enleve) G.dessiner(ctx, G.cochons.f_normal, px + 1, py + 1, c - 2, (c - 2) * 13 / 14, 0.5);
+        else G.dessiner(ctx, G.cochons.normal, px + 1, py + 1, c - 2, (c - 2) * 13 / 14);
+      }
+      if (enleve) {
+        ctx.strokeStyle = C.rouge; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(gx - 4, gy + (r + j + 0.5) * c); ctx.lineTo(gx + gw + 4, gy + (r + j + 0.5) * c); ctx.stroke();
+        G.texte(ctx, '− ' + n, gx + gw + 14, gy + (r + j + 0.5) * c, Math.min(24, c * 0.7), C.rouge, { police: 'titre', align: 'left' });
+      }
+    }
+    // accolade et total du groupe
+    const y0 = gy + r * c, y1 = gy + (r + g.rangs) * c;
+    ctx.strokeStyle = coul; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(gx + gw + 4, y0 + 2); ctx.lineTo(gx + gw + 10, y0 + 2); ctx.lineTo(gx + gw + 10, y1 - 2); ctx.lineTo(gx + gw + 4, y1 - 2); ctx.stroke();
+    const total = x.retire ? g.total - x.retire * n : g.total;
+    if (x.groupes.length > 1 || x.retire) G.texte(ctx, String(x.retire ? g.total : total), gx + gw + 16, (y0 + y1) / 2, Math.min(26, c * 0.8), coul, { police: 'titre', align: 'left' });
+    r += g.rangs;
+  });
+  // nombre de cochons par rangée
+  G.texte(ctx, n + ' par rangée', gx + gw / 2, gy - 16, Math.min(20, c * 0.6), '#9aa3e0', {});
+}
+
+function carteAstuceTable(cx, cy, cw, ch) {
+  const a = L.ASTUCES_TABLE[F.table];
+  const entree = G.sortie(tEcran * 3);
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(entree, entree);
+  G.rectNeon(ctx, -cw / 2, -ch / 2, cw, ch, C.jaune, { fond: 'rgba(30,24,10,0.95)', flou: 22, epaisseur: 4, coin: 16 });
+  G.texte(ctx, 'L\'ASTUCE', 0, -ch / 2 + 46, 30, C.jaune, { police: 'titre', lueur: C.jaune });
+  const tt = Math.min(40, 40 * (cw - 40) / G.largeur(ctx, a.titre, 40));
+  G.texte(ctx, a.titre, 0, -ch / 2 + 110, tt, '#fff', { lueur: C.jaune, flou: 8 });
+  let y = -ch / 2 + 170;
+  a.lignes.forEach((l, i) => {
+    const t2 = Math.min(i === 1 ? 34 : 26, (i === 1 ? 34 : 26) * (cw - 40) / G.largeur(ctx, l, i === 1 ? 34 : 26, i === 1 ? 'titre' : 'texte'));
+    G.texte(ctx, l, 0, y, t2, i === 1 ? C.cyan : '#dff', { police: i === 1 ? 'titre' : 'texte' });
+    y += t2 + 26;
+  });
+  // exemple dessiné avec 7 (ou 8 pour la table de 7, 6 pour 8)
+  const ex = F.table === 7 ? 6 : F.table === 8 ? 6 : F.table === 5 ? 8 : 7;
+  if (F.table !== ex) dessinerDecoupe(L.astuce(F.table, ex), -cw / 2 + 30, y, cw - 60, ch / 2 - y - 20);
+  ctx.restore();
+  const by = cy + ch / 2 + 18, bh = Math.min(84, H - by - 14), bw = Math.min(420, W - 40);
+  bouton('commencer', W / 2 - bw / 2, by, bw, bh, { texte: 'LES CARTES !', taille: 28, police: 'titre', couleur: C.vert, flou: 18 + Math.sin(temps * 5) * 6 }, () => { F.etape = 'devant'; F.t = 0; F.tCarte = 0; S.sfx('whoosh'); });
+}
+
+function finCartes() {
+  const n = F.sues, tot = F.vues;
+  const etoiles = n >= 10 ? 3 : n >= 8 ? 2 : n >= 5 ? 1 : 0;
+  for (let i = 0; i < 3; i++) {
+    const k = G.elastique(clamp((F.t - 0.4 - i * 0.3) * 2, 0, 1));
+    const s2 = 100;
+    ctx.save(); ctx.translate(W / 2 + (i - 1) * (s2 + 20), H * 0.32); ctx.scale(k, k);
+    G.dessiner(ctx, G.etoile, -s2 / 2, -s2 / 2, s2, s2, i < etoiles ? 1 : 0.18);
+    ctx.restore();
+  }
+  G.texte(ctx, `${n} sur ${tot} du premier coup !`, W / 2, H * 0.47, 34, '#fff', { lueur: C.cyan });
+  G.texte(ctx, n >= 8 ? 'Maintenant, essaie dans la grange !' : 'Relis les astuces et recommence.', W / 2, H * 0.54, 26, C.jaune, {});
+  const bw = Math.min(300, (W - 60) / 2), bh = 72, y = H * 0.62;
+  bouton('encore', W / 2 - bw - 10, y, bw, bh, { texte: 'ENCORE', taille: 28, police: 'titre', couleur: C.violet }, () => lancerCartes(F.table));
+  if (F.table) bouton('grange', W / 2 + 10, y, bw, bh, { texte: 'GRANGE', taille: 28, police: 'titre', couleur: C.vert }, () => lancerCourse({ mode: 'entrainement', table: F.table }));
+  else bouton('autres', W / 2 + 10, y, bw, bh, { texte: 'ASTUCES', taille: 28, police: 'titre', couleur: C.cyan }, () => { ecran = 'astuces'; tEcran = 0; });
+}
+
+// =====================================================================
 // MES TABLES
 // =====================================================================
 const COUL_NIV = ['#262d6e', '#ff3a5c', '#ff9d3c', '#45e07a', '#ffd23f'];
@@ -1184,6 +1427,8 @@ function boucle(now) {
     case 'course': ecranCourse(dt); break;
     case 'resultats': ecranResultats(dt); break;
     case 'tables': ecranTables(dt); break;
+    case 'astuces': ecranAstuces(dt); break;
+    case 'cartes': ecranCartes(dt); break;
   }
   G.dessinerParticules(ctx);
   G.dessinerPops(ctx);
@@ -1244,6 +1489,10 @@ window.addEventListener('keydown', e => {
     else if (e.key === 'Enter') { touche('ok'); appui = { id: 'kok', t: temps }; }
     else if (e.key === 'Escape') R.pauseMenu = !R.pauseMenu;
     e.preventDefault();
+  } else if (ecran === 'cartes' && F && (e.key === 'Enter' || e.key === ' ')) {
+    if (F.etape === 'devant') retourner(); else if (F.etape === 'dos') repondreCarte(true); else if (F.etape === 'astuce') { F.etape = 'devant'; F.t = 0; F.tCarte = 0; }
+    e.preventDefault();
+  } else if (ecran === 'cartes' && F && F.etape === 'dos' && e.key === 'Backspace') { repondreCarte(false); e.preventDefault();
   } else if (e.key === 'Escape' && ecran !== 'titre') retour(false);
 });
 document.addEventListener('visibilitychange', () => {
@@ -1283,5 +1532,5 @@ Promise.race([document.fonts ? document.fonts.load('40px PS2').then(() => docume
   .finally(() => requestAnimationFrame(boucle));
 
 // pour les tests automatiques
-window.__jeu = { get R() { return R; }, get ecran() { return ecran; }, lancerCourse, touche, aller, sv: () => sv, set choixCoupe(v) { choixCoupe = v; } };
+window.__jeu = { get F() { return F; }, lancerCartes, retourner, repondreCarte, get R() { return R; }, get ecran() { return ecran; }, lancerCourse, touche, aller, sv: () => sv, set choixCoupe(v) { choixCoupe = v; } };
 })();

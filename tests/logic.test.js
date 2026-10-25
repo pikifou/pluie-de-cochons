@@ -89,3 +89,26 @@ test('entraînement : toute la table, sans perdre de coeur', () => {
   assert.strictEqual(c.coeurs, 3);
   assert.strictEqual(c.file.length, 10);
 });
+
+test('astuces : le calcul affiché donne toujours le bon résultat', () => {
+  for (let a = 1; a <= 10; a++) for (let b = 1; b <= 10; b++) {
+    const x = L.astuce(a, b);
+    assert.strictEqual(x.resultat, a * b);
+    assert.ok(x.calcul.endsWith(String(a * b)), a + 'x' + b + ' : ' + x.calcul);
+    const somme = x.groupes.reduce((s, g) => s + g.total, 0) - x.retire * x.n;
+    assert.strictEqual(somme, a * b, 'découpe ' + a + 'x' + b);
+    assert.ok(x.t === a || x.t === b);
+  }
+  assert.strictEqual(L.astuce(7, 8).t, 8);
+  assert.strictEqual(L.astuce(3, 9).t, 9);
+});
+
+test('paquets : une table complète, ou 10 cartes difficiles', () => {
+  const p = L.paquet({}, 7);
+  assert.strictEqual(p.length, 10);
+  assert.ok(p.every(q => q.a === 7 || q.b === 7));
+  const m = {}; L.noter(m, 6, 7, false, 9);
+  const d = L.paquet(m, null, () => 0.5);
+  assert.strictEqual(d.length, 10);
+  assert.ok(d.some(q => q.a * q.b === 42), 'la carte ratée est dans le paquet');
+});

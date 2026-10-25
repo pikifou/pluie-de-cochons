@@ -269,7 +269,79 @@ function meilleurTrophee(sv, coupeId, classeId) {
   return r ? trophee(r.place) : 0;
 }
 
+// ---------- Astuces (mode flash cards) ----------
+const ASTUCES_TABLE = {
+  1:  { titre: 'Fois 1 : rien ne change', lignes: ['Un seul groupe, c\'est le nombre lui-même.', '1 × 7 = 7'] },
+  2:  { titre: 'Fois 2 : le double', lignes: ['On ajoute le nombre à lui-même.', '2 × 7 = 7 + 7 = 14'] },
+  3:  { titre: 'Fois 3 : le double, plus une fois', lignes: ['Fais le double, puis ajoute encore le nombre.', '3 × 7 = 14 + 7 = 21'] },
+  4:  { titre: 'Fois 4 : le double du double', lignes: ['Double une fois, puis encore une fois.', '4 × 7 : 7 → 14 → 28'] },
+  5:  { titre: 'Fois 5 : la moitié de fois 10', lignes: ['Fais fois 10, puis prends la moitié.', '5 × 8 : 80, la moitié = 40', 'Ça finit toujours par 0 ou par 5.'] },
+  6:  { titre: 'Fois 6 : fois 5, plus une fois', lignes: ['Fais fois 5, puis ajoute le nombre.', '6 × 7 = 35 + 7 = 42'] },
+  7:  { titre: 'Fois 7 : fois 5, plus fois 2', lignes: ['Fais fois 5, puis ajoute le double.', '7 × 6 = 30 + 12 = 42', 'À retenir : 7 × 7 = 49 et 7 × 8 = 56.'] },
+  8:  { titre: 'Fois 8 : double, double, double', lignes: ['Double trois fois de suite.', '8 × 6 : 6 → 12 → 24 → 48'] },
+  9:  { titre: 'Fois 9 : fois 10, moins une fois', lignes: ['Fais fois 10, puis enlève le nombre.', '9 × 7 = 70 − 7 = 63', 'Vérifie : les chiffres font 9 (6 + 3).'] },
+  10: { titre: 'Fois 10 : on ajoute un zéro', lignes: ['Le nombre, puis un zéro au bout.', '10 × 7 = 70'] },
+};
+const ORDRE_ASTUCES = [1, 10, 2, 5, 9, 4, 3, 6, 8, 7]; // de la plus facile à la plus longue
+const MEMOS = {
+  '7x8': '5, 6, 7, 8 : 56 = 7 × 8 !',
+  '8x8': '64, comme les cases d\'un échiquier.',
+  '7x7': '49, juste avant 50.',
+  '6x8': '48 : presque 50, il manque 2.',
+  '6x7': '42 : la table de 6 et de 7 se croisent ici.',
+};
+// Découpe de la grille pour le dessin : groupes de rangées (de n cochons)
+const DECOUPE = { 1: [1], 2: [1, 1], 3: [2, 1], 4: [2, 2], 5: [5], 6: [5, 1], 7: [5, 2], 8: [4, 4], 9: [10], 10: [10] };  // 9 : 10 rangées dont une qu'on enlève
+
+// Explication pour une multiplication : on prend la table la plus facile des deux
+function astuce(a, b) {
+  const t = ORDRE_ASTUCES.find(x => x === a || x === b);
+  const n = t === a ? b : a;
+  const r = a * b;
+  let titre, calcul;
+  switch (t) {
+    case 1:  titre = 'Fois 1, rien ne change'; calcul = `${n} × 1 = ${n}`; break;
+    case 10: titre = 'Fois 10 : on ajoute un zéro'; calcul = `${n} → ${r}`; break;
+    case 2:  titre = 'Le double'; calcul = `${n} + ${n} = ${r}`; break;
+    case 3:  titre = 'Le double, plus une fois'; calcul = `${2 * n} + ${n} = ${r}`; break;
+    case 4:  titre = 'Le double du double'; calcul = `${n} → ${2 * n} → ${r}`; break;
+    case 5:  titre = 'La moitié de fois 10'; calcul = `${n * 10}, la moitié = ${r}`; break;
+    case 6:  titre = 'Fois 5, plus une fois'; calcul = `${5 * n} + ${n} = ${r}`; break;
+    case 7:  titre = 'Fois 5, plus fois 2'; calcul = `${5 * n} + ${2 * n} = ${r}`; break;
+    case 8:  titre = 'Double, double, double'; calcul = `${n} → ${2 * n} → ${4 * n} → ${r}`; break;
+    case 9:  titre = 'Fois 10, moins une fois'; calcul = `${10 * n} − ${n} = ${r}`; break;
+  }
+  const lignes = [];
+  if (t === 9 && r >= 10) lignes.push(`Les chiffres font 9 : ${String(r)[0]} + ${String(r)[1]} = 9`);
+  const memo = MEMOS[cle(a, b)];
+  if (memo) lignes.push(memo);
+  if (a !== b && t !== 1 && t !== 10 && n !== 1 && n !== 10) lignes.push(`${a} × ${b} = ${b} × ${a} : on prend la table de ${t}.`);
+  const groupes = DECOUPE[t].map(rangs => ({ rangs, total: rangs * n }));
+  return { t, n, resultat: r, titre, calcul, lignes, groupes, retire: t === 9 ? 1 : 0 };
+}
+
+// Paquet de cartes : une table, ou les 10 multiplications les moins bien sues
+function paquet(maitrise, table, rand) {
+  rand = rand || Math.random;
+  let l;
+  if (table) {
+    l = [];
+    for (let x = 1; x <= 10; x++) l.push(rand() < 0.5 ? { a: table, b: x } : { a: x, b: table });
+  } else {
+    const tous = [];
+    for (let a = 2; a <= 9; a++) for (let b = a; b <= 9; b++) {
+      const n = niveau(maitrise[cle(a, b)]);
+      tous.push({ a, b, score: [2, 0, 3, 5, 7][n] + rand() * 2.5 - (a * b >= 30 ? 0.8 : 0) });
+    }
+    tous.sort((x, y) => x.score - y.score);
+    l = tous.slice(0, 10).map(q => rand() < 0.5 ? { a: q.a, b: q.b } : { a: q.b, b: q.a });
+  }
+  for (let i = l.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [l[i], l[j]] = [l[j], l[i]]; }
+  return l;
+}
+
 const API = {
+  ASTUCES_TABLE, astuce, paquet,
   CLASSES, COUPES, RIVAUX, PENALITE, COEURS,
   classe, coupe, tempsParGrange, tempsRival, classement, place, trophee,
   cle, niveau, noter, toutesLesCles, bilan, tableConnue,
