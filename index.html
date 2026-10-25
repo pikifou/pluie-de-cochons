@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Jeu de type arcade inspiré des jeux de dragons" />
+    <title>Pluie de cochons</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="game-shell">
+      <header class="hud">
+        <div>
+          <span class="label">Score</span>
+          <strong id="score">0</strong>
+        </div>
+        <div>
+          <span class="label">Vies</span>
+          <strong id="lives">3</strong>
+        </div>
+      </header>
+
+      <main class="game-area">
+        <canvas id="game" width="960" height="540" aria-label="Zone de jeu"></canvas>
+      </main>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

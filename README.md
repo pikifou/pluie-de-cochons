@@ -1,2 +1,4 @@
-# pluie-de-cochons
-Dépôt pour le projet pluie-de-cochons
+node_modules/
+dist/
+.vite/
+.DS_Store
