@@ -197,7 +197,7 @@ function repondre(c, rep, secondes, maitrise) {
   const q = c.file.shift();
   const v = verdict(q, rep);
   const juste = v === 'juste';
-  if (c.mode === 'coupe') c.temps += secondes;
+  c.temps += secondes;   // en coupe comme à l'entraînement : le chrono compte
   if (maitrise) noter(maitrise, q.a, q.b, juste, secondes);
   const k = cle(q.a, q.b);
   if (juste) {
@@ -206,7 +206,8 @@ function repondre(c, rep, secondes, maitrise) {
   } else {
     c.erreurs++;
     c.rates.add(k);
-    if (c.mode === 'coupe') { c.coeurs--; c.temps += PENALITE; c.penalites += PENALITE; }
+    c.temps += PENALITE; c.penalites += PENALITE;
+    if (c.mode === 'coupe') c.coeurs--;
     // la grange ratée revient un peu plus tard, tournée dans l'autre sens
     const pos = Math.min(2, c.file.length);
     c.file.splice(pos, 0, { a: q.b, b: q.a, rejouee: true });
@@ -229,6 +230,7 @@ function nouvelleSauvegarde() {
     nom: 'Joshua',
     maitrise: {},
     records: {},     // 'coupe:classe' -> { temps, place }
+    recordsTables: {}, // table -> { temps, historique: [derniers temps] }
     debloquees: ['paille'],
     musique: 0.7,
     bruitages: 1,
@@ -263,6 +265,19 @@ function enregistrer(sv, coupeId, classeId, temps) {
   const nouvelles = apres.filter(x => !avant.includes(x));
   return { place: p, record, ancien: ancien ? ancien.temps : null, nouvelles };
 }
+
+// Record de l'entraînement d'une table (temps de réflexion + 5 s par erreur)
+function enregistrerTable(sv, table, temps) {
+  if (!sv.recordsTables) sv.recordsTables = {};
+  const r = sv.recordsTables[table] || { temps: null, historique: [] };
+  const ancien = r.temps;
+  const record = ancien == null || temps < ancien;
+  if (record) r.temps = temps;
+  r.historique = (r.historique || []).concat([temps]).slice(-8);
+  sv.recordsTables[table] = r;
+  return { record, ancien, historique: r.historique.slice() };
+}
+function recordTable(sv, table) { const r = sv.recordsTables && sv.recordsTables[table]; return r ? r.temps : null; }
 
 function meilleurTrophee(sv, coupeId, classeId) {
   const r = sv.records[cleRecord(coupeId, classeId)];
@@ -347,7 +362,7 @@ const API = {
   cle, niveau, noter, toutesLesCles, bilan, tableConnue,
   candidats, tirerQuestions, questionsEntrainement,
   nouvelleCourse, questionCourante, verdict, repondre,
-  nouvelleSauvegarde, cleRecord, coupesDebloquees, enregistrer, meilleurTrophee,
+  nouvelleSauvegarde, cleRecord, coupesDebloquees, enregistrer, meilleurTrophee, enregistrerTable, recordTable,
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else root.L = API;

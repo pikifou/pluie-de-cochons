@@ -231,7 +231,7 @@ function repondre(c, rep, secondes, maitrise) {
   const q = c.file.shift();
   const v = verdict(q, rep);
   const juste = v === 'juste';
-  if (c.mode === 'coupe') c.temps += secondes;
+  c.temps += secondes;   // en coupe comme à l'entraînement : le chrono compte
   if (maitrise) noter(maitrise, q.a, q.b, juste, secondes);
   const k = cle(q.a, q.b);
   if (juste) {
@@ -240,7 +240,8 @@ function repondre(c, rep, secondes, maitrise) {
   } else {
     c.erreurs++;
     c.rates.add(k);
-    if (c.mode === 'coupe') { c.coeurs--; c.temps += PENALITE; c.penalites += PENALITE; }
+    c.temps += PENALITE; c.penalites += PENALITE;
+    if (c.mode === 'coupe') c.coeurs--;
     // la grange ratée revient un peu plus tard, tournée dans l'autre sens
     const pos = Math.min(2, c.file.length);
     c.file.splice(pos, 0, { a: q.b, b: q.a, rejouee: true });
@@ -263,6 +264,7 @@ function nouvelleSauvegarde() {
     nom: 'Joshua',
     maitrise: {},
     records: {},     // 'coupe:classe' -> { temps, place }
+    recordsTables: {}, // table -> { temps, historique: [derniers temps] }
     debloquees: ['paille'],
     musique: 0.7,
     bruitages: 1,
@@ -297,6 +299,19 @@ function enregistrer(sv, coupeId, classeId, temps) {
   const nouvelles = apres.filter(x => !avant.includes(x));
   return { place: p, record, ancien: ancien ? ancien.temps : null, nouvelles };
 }
+
+// Record de l'entraînement d'une table (temps de réflexion + 5 s par erreur)
+function enregistrerTable(sv, table, temps) {
+  if (!sv.recordsTables) sv.recordsTables = {};
+  const r = sv.recordsTables[table] || { temps: null, historique: [] };
+  const ancien = r.temps;
+  const record = ancien == null || temps < ancien;
+  if (record) r.temps = temps;
+  r.historique = (r.historique || []).concat([temps]).slice(-8);
+  sv.recordsTables[table] = r;
+  return { record, ancien, historique: r.historique.slice() };
+}
+function recordTable(sv, table) { const r = sv.recordsTables && sv.recordsTables[table]; return r ? r.temps : null; }
 
 function meilleurTrophee(sv, coupeId, classeId) {
   const r = sv.records[cleRecord(coupeId, classeId)];
@@ -381,7 +396,7 @@ const API = {
   cle, niveau, noter, toutesLesCles, bilan, tableConnue,
   candidats, tirerQuestions, questionsEntrainement,
   nouvelleCourse, questionCourante, verdict, repondre,
-  nouvelleSauvegarde, cleRecord, coupesDebloquees, enregistrer, meilleurTrophee,
+  nouvelleSauvegarde, cleRecord, coupesDebloquees, enregistrer, meilleurTrophee, enregistrerTable, recordTable,
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else root.L = API;
@@ -1215,29 +1230,85 @@ function ecranTitre(dt) {
   bouton('astuces', cx + 8, y1 + bh + 18, bw3, bh * 0.78, { texte: 'ASTUCES', taille: Math.min(bh * 0.24, bw3 / 8), police: 'titre', couleur: C.violet }, () => aller('astuces'));
 
   boutonsSon(20, H - 84, 64);
-  if (installEvt) bouton('installer', W - 230, H - 84, 210, 64, { texte: 'Installer', taille: 26, couleur: C.vert }, () => { installEvt.prompt(); installEvt = null; });
-  else if (IOS && !AUTONOME) bouton('installer', W - 230, H - 84, 210, 64, { texte: 'Installer', taille: 26, couleur: C.vert }, () => { aideIOS = true; });
-  if (aideIOS) dessinerAideIOS();
+  boutonPleinEcran(20 + 2 * (64 + 12), H - 84, 64);
+  if (!AUTONOME) bouton('installer', W - 230, H - 84, 210, 64, { texte: 'Installer', taille: 26, couleur: C.vert }, installer);
+  if (aide) dessinerAide();
 }
 
-// iPhone : Safari n'a pas de bouton d'installation, on explique le geste
+// ---------- Installation et plein écran ----------
 const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const ANDROID = /Android/.test(navigator.userAgent);
 const AUTONOME = matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
-let aideIOS = false;
-function dessinerAideIOS() {
-  ctx.fillStyle = 'rgba(4,6,24,0.92)'; ctx.fillRect(0, 0, W, H);
+const DANS_CADRE = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
+const ADRESSE = 'pikifou.github.io/pluie-de-cochons';
+let aide = null;   // null | 'installer' | 'pleinecran'
+
+function installer() {
+  if (installEvt) {
+    const ev = installEvt;
+    try {
+      ev.prompt();
+      ev.userChoice.then(c => { if (c.outcome === 'accepted') installEvt = null; }).catch(() => {});
+      return;
+    } catch (e) { /* on montre l'aide */ }
+  }
+  aide = 'installer';
+}
+
+function pleinEcranActif() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+function basculerPleinEcran() {
+  const el = document.documentElement;
+  if (pleinEcranActif()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!req || DANS_CADRE && !document.fullscreenEnabled) { aide = 'pleinecran'; return; }
+  try {
+    const r = req.call(el, { navigationUI: 'hide' });
+    if (r && r.catch) r.catch(() => { aide = 'pleinecran'; });
+  } catch (e) { aide = 'pleinecran'; }
+}
+function iconePleinEcran(c, w, h) {
+  const s2 = h * 0.26, e = 4, on = pleinEcranActif();
+  c.strokeStyle = '#fff'; c.lineWidth = e;
+  c.beginPath();
+  for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    const x = sx * s2, y = sy * s2, d = on ? -s2 * 0.6 : s2 * 0.6;
+    c.moveTo(x, y - sy * d); c.lineTo(x, y); c.lineTo(x - sx * d, y);
+  }
+  c.stroke();
+}
+function boutonPleinEcran(x, y, t) {
+  if (AUTONOME && !document.fullscreenEnabled) return;   // appli installée : déjà en plein écran
+  bouton('pleinecran', x, y, t, t, { couleur: C.violet, dessin: iconePleinEcran }, basculerPleinEcran);
+}
+
+function dessinerAide() {
+  ctx.fillStyle = 'rgba(4,6,24,0.94)'; ctx.fillRect(0, 0, W, H);
   boutons = [];
-  const cx = W / 2, w = Math.min(W - 40, 560);
-  G.texteFige(ctx, 'INSTALLER', cx, H * 0.22, 40, C.vert, { police: 'titre', lueur: C.vert });
-  const lignes = ['Ouvre ce jeu dans Safari', 'Touche le bouton Partager', '(le carré avec une flèche vers le haut)', 'Choisis « Sur l\'écran d\'accueil »', 'Puis touche « Ajouter »'];
-  lignes.forEach((l, i) => G.texte(ctx, l, cx, H * 0.34 + i * 54, l.startsWith('(') ? 22 : 30, l.startsWith('(') ? '#9aa3e0' : '#fff', {}));
-  // icône Partager
-  const ix = cx, iy = H * 0.34 + 5 * 54 + 30;
-  ctx.strokeStyle = C.cyan; ctx.lineWidth = 4;
-  ctx.strokeRect(ix - 22, iy - 6, 44, 46);
-  ctx.beginPath(); ctx.moveTo(ix, iy + 18); ctx.lineTo(ix, iy - 34); ctx.moveTo(ix - 13, iy - 21); ctx.lineTo(ix, iy - 34); ctx.lineTo(ix + 13, iy - 21); ctx.stroke();
-  G.texte(ctx, 'Le jeu s\'ouvrira en plein écran, même sans internet.', cx, iy + 90, 22, C.jaune, {});
-  bouton('fermer-aide', cx - 120, H - 140, 240, 72, { texte: 'OK', taille: 32, police: 'titre', couleur: C.vert }, () => { aideIOS = false; });
+  const cx = W / 2;
+  const lignes = [];
+  let titre = 'INSTALLER';
+  if (aide === 'pleinecran') {
+    titre = 'PLEIN ÉCRAN';
+    if (IOS) lignes.push(['Sur iPhone, le plein écran', '#fff'], ['passe par l\'installation :', '#fff'], ['', '']);
+    else lignes.push(['Ici, le plein écran est bloqué.', '#fff'], ['Installe le jeu, il s\'ouvrira', '#fff'], ['directement en plein écran :', '#fff'], ['', '']);
+  }
+  if (DANS_CADRE) {
+    lignes.push(['Ouvre d\'abord le jeu dans', '#fff'], [IOS ? 'Safari, à cette adresse :' : 'Chrome, à cette adresse :', '#fff'], [ADRESSE, C.cyan], ['', '']);
+  }
+  if (IOS) {
+    lignes.push(['Dans Safari, touche Partager', '#fff'], ['(le carré avec une flèche vers le haut)', '#9aa3e0'], ['puis « Sur l\'écran d\'accueil »', '#fff'], ['et enfin « Ajouter ».', '#fff']);
+  } else {
+    lignes.push(['Dans Chrome, touche le menu ⋮', '#fff'], ['(les trois points en haut à droite)', '#9aa3e0'], ['puis « Installer l\'appli »', '#fff'], ['ou « Ajouter à l\'écran d\'accueil ».', '#fff']);
+  }
+  G.texteFige(ctx, titre, cx, H * 0.14, Math.min(40, W / 14), C.vert, { police: 'titre', lueur: C.vert });
+  const lh = Math.min(50, H * 0.55 / lignes.length);
+  let y = H * 0.24;
+  for (const [l, c] of lignes) {
+    if (l) { const t = Math.min(c === '#9aa3e0' ? 22 : 30, (c === '#9aa3e0' ? 22 : 30) * (W - 40) / G.largeur(ctx, l, 30)); G.texte(ctx, l, cx, y, t, c, {}); }
+    y += l ? lh : lh * 0.5;
+  }
+  G.texte(ctx, 'Ensuite il s\'ouvre en plein écran, même sans internet.', cx, y + 10, Math.min(22, 22 * (W - 40) / G.largeur(ctx, 'Ensuite il s\'ouvre en plein écran, même sans internet.', 22)), C.jaune, {});
+  bouton('fermer-aide', cx - 120, H - 130, 240, 72, { texte: 'OK', taille: 32, police: 'titre', couleur: C.vert }, () => { aide = null; });
 }
 
 // =====================================================================
@@ -1394,7 +1465,7 @@ function rangCourant() {
 function zones() {
   const z = {};
   if (PORTRAIT) {
-    z.hud = { x: 0, y: 0, w: W, h: R.mode === 'coupe' ? 196 : 100 };
+    z.hud = { x: 0, y: 0, w: W, h: R.mode === 'coupe' ? 196 : 136 };
     z.question = { x: 0, y: z.hud.h, w: W, h: 100 };
     const kh = Math.min(H * 0.33, 430);
     z.clavier = { x: W / 2 - Math.min(W - 40, 520) / 2, y: H - kh - 16, w: Math.min(W - 40, 520), h: kh };
@@ -1477,7 +1548,7 @@ function majCourse(dt) {
     R.tq += dt;
     if (R.mode === 'coupe' && Math.floor(R.tq) !== Math.floor(R.tq - dt) && R.tq > 5) S.sfx('tic');
   }
-  R.tAff = lerp(R.tAff, R.mode === 'coupe' ? tempsLive() : 0, Math.min(1, dt * 8));
+  R.tAff = lerp(R.tAff, tempsLive(), Math.min(1, dt * 8));
   R.prog = lerp(R.prog, R.course.justes / R.course.objectif, Math.min(1, dt * 5));
 
   // dépassements
@@ -1605,6 +1676,7 @@ function debutVerdict(g) {
       banniere(`ÇA DÉBORDE ! ${n} DE TROP`, zq);
     }
     if (R.mode === 'coupe') casserCoeur();
+    else G.pop('+' + L.PENALITE + ' s', W - 150, PORTRAIT ? 130 : 110, { taille: 34, couleur: C.rouge, police: 'titre', duree: 1.2, monte: -40 });
     flash = 0.35; flashCouleur = '#ff2040';
     secousse = 10;
   }
@@ -1694,9 +1766,12 @@ function finCourse() {
       if (r.nouvelles.length) setTimeout(() => S.voix('debloque'), d);
     }
   } else {
-    FIN = { mode: 'entrainement', table: R.table, premierCoup: c.premierCoup, total: c.objectif, erreurs: c.erreurs };
+    const r = L.enregistrerTable(sv, R.table, c.temps);
+    sauver();
+    FIN = { mode: 'entrainement', table: R.table, premierCoup: c.premierCoup, total: c.objectif, erreurs: c.erreurs, temps: c.temps, penalites: c.penalites, record: r.record, ancien: r.ancien, historique: r.historique };
     const n = c.premierCoup;
-    setTimeout(() => { S.sfx(n >= 8 ? 'trophee' : 'parfait'); S.voix(n >= 9 ? 'parfait' : n >= 7 ? 'bravo' : 'super'); }, 400);
+    setTimeout(() => { S.sfx(r.record ? 'trophee' : n >= 8 ? 'parfait' : 'oh'); }, 400);
+    setTimeout(() => S.voix(r.record && r.ancien != null ? 'record' : n >= 9 ? 'parfait' : n >= 7 ? 'bravo' : 'super'), 1300);
   }
   ecran = 'resultats'; tEcran = 0;
   S.jouerMusique('menu');
@@ -1788,8 +1863,28 @@ function dessinerHud(z) {
     const cp = L.coupe(R.coupe);
     G.texte(ctx, `Grange ${Math.min(R.course.justes + 1, R.course.objectif)} / ${R.course.objectif}`, PORTRAIT ? W - 24 : z.grange.x + z.grange.w - 10, posCoeur(z, 0).y + 20, 28, '#cfe', { align: 'right' });
   } else {
-    G.texteFige(ctx, 'ENTRAÎNEMENT', W / 2, 30, 26, C.vert, { police: 'titre', lueur: C.vert });
-    G.texte(ctx, `Table de ${R.table} · ${R.course.justes} / ${R.course.objectif}`, W / 2, 64, 26, '#cfe', {});
+    const reste = R.course.file.length;
+    if (PORTRAIT) G.texte(ctx, `Entraînement · table de ${R.table} · ${R.course.justes} / ${R.course.justes + reste}`, W / 2, 116, 26, '#cfe', {});
+    else {
+      G.texteFige(ctx, 'ENTRAÎNEMENT', W / 2, 30, 26, C.vert, { police: 'titre', lueur: C.vert });
+      G.texte(ctx, `Table de ${R.table} · ${R.course.justes} / ${R.course.justes + reste}`, W / 2, 64, 26, '#cfe', {});
+    }
+    // chrono : vert si on va plus vite que le record, orange sinon
+    const rec = L.recordTable(sv, R.table);
+    const tl = tempsLive();
+    let coul = C.cyan, etat = '';
+    if (rec != null) {
+      const fait = R.course.justes / Math.max(1, R.course.justes + reste);
+      const allure = rec * fait;
+      if (R.course.justes > 0 || tl > rec * 0.1) { const avance = tl <= allure + (R.phase === 'question' ? rec * 0.1 : 0); coul = avance ? C.vert : '#ff9d3c'; etat = avance ? 'en avance !' : 'accélère !'; }
+      if (tl > rec) { coul = C.rouge; etat = 'record dépassé'; }
+    }
+    G.texte(ctx, fmt(tl).replace(' s', ''), W - 112, PORTRAIT ? 48 : 38, PORTRAIT ? 44 : 36, coul, { police: 'titre', align: 'right', lueur: coul });
+    G.texte(ctx, 's', W - 104, PORTRAIT ? 56 : 46, 26, coul, { align: 'left', police: 'titre' });
+    if (etat) G.texte(ctx, etat, W - 112, PORTRAIT ? 84 : 74, 20, coul, { align: 'right' });
+    // record à battre
+    G.texte(ctx, 'RECORD', 18, PORTRAIT ? 30 : 24, 16, C.jaune, { police: 'titre', align: 'left' });
+    G.texte(ctx, rec != null ? fmt(rec) : '--', 18, PORTRAIT ? 66 : 56, PORTRAIT ? 30 : 26, C.jaune, { police: 'titre', align: 'left', lueur: C.jaune, flou: 8 });
   }
   // pause
   bouton('pause', W - 70, 12, 56, 56, { couleur: C.violet, dessin: (c2) => { c2.fillStyle = '#fff'; c2.fillRect(-11, -13, 8, 26); c2.fillRect(3, -13, 8, 26); } }, () => { R.pauseMenu = true; S.sfx('clic'); });
@@ -2004,6 +2099,8 @@ function dessinerPause() {
   G.texte(ctx, 'PAUSE', W / 2, H * 0.3, 64, C.cyan, { police: 'titre', lueur: C.cyan });
   const bw = Math.min(420, W * 0.8), bh = 84;
   bouton('reprendre', W / 2 - bw / 2, H * 0.45, bw, bh, { texte: 'REPRENDRE', taille: 30, police: 'titre', couleur: C.vert }, () => { R.pauseMenu = false; S.sfx('clic'); });
+  boutonPleinEcran(W / 2 - 32, H * 0.45 + bh * 1.8 + 60, 64);
+  if (aide) dessinerAide();
   bouton('abandon', W / 2 - bw / 2, H * 0.45 + bh + 24, bw, bh * 0.8, { texte: 'Quitter la course', taille: 30, couleur: C.rouge }, () => { const m = R.mode; R.pauseMenu = false; R = null; ecran = m === 'entrainement' ? 'tables' : 'depart'; tEcran = 0; S.jouerMusique('menu'); });
 }
 
@@ -2097,20 +2194,49 @@ function boutonsFin(y) {
 
 function resultatsEntrainement(dt) {
   const n = FIN.premierCoup, tot = FIN.total;
-  G.texte(ctx, `TABLE DE ${FIN.table}`, W / 2, H * 0.16, Math.min(50, W / 12), C.vert, { police: 'titre', lueur: C.vert, contour: '#1a0630' });
+  const cx = W / 2;
+  G.texte(ctx, `TABLE DE ${FIN.table}`, cx, H * 0.09, Math.min(46, W / 13), C.vert, { police: 'titre', lueur: C.vert, contour: '#1a0630' });
   const etoiles = n >= 10 ? 3 : n >= 8 ? 2 : n >= 5 ? 1 : 0;
+  const es = PORTRAIT ? 90 : 64;
   for (let i = 0; i < 3; i++) {
-    const k = G.elastique(clamp((tEcran - 0.5 - i * 0.3) * 2, 0, 1));
-    const s = 100;
-    ctx.save(); ctx.translate(W / 2 + (i - 1) * (s + 20), H * 0.33); ctx.scale(k, k);
-    if (i < etoiles) { ctx.shadowColor = C.jaune; ctx.shadowBlur = 24; G.dessiner(ctx, G.etoile, -s / 2, -s / 2, s, s); }
-    else G.dessiner(ctx, G.etoile, -s / 2, -s / 2, s, s, 0.18);
+    const k = G.elastique(clamp((tEcran - 0.3 - i * 0.2) * 2, 0, 1));
+    ctx.save(); ctx.translate(cx + (i - 1) * (es + 16), H * (PORTRAIT ? 0.17 : 0.2)); ctx.scale(k, k);
+    G.dessiner(ctx, G.etoile, -es / 2, -es / 2, es, es, i < etoiles ? 1 : 0.18);
     ctx.restore();
   }
-  G.texte(ctx, `${n} sur ${tot} du premier coup !`, W / 2, H * 0.48, 34, '#fff', { lueur: C.cyan });
-  const connue = L.tableConnue(sv.maitrise, FIN.table);
-  G.texte(ctx, connue ? 'Tu connais cette table !' : 'Encore un peu et elle sera dans ta tête !', W / 2, H * 0.55, 26, connue ? C.vert : C.jaune, {});
-  boutonsFin(H * 0.66);
+  G.texte(ctx, `${n} sur ${tot} du premier coup`, cx, H * (PORTRAIT ? 0.235 : 0.3), 26, '#dff', {});
+  // le temps, en grand
+  const kt = G.elastique(clamp((tEcran - 0.8) * 1.8, 0, 1));
+  ctx.save(); ctx.translate(cx, H * (PORTRAIT ? 0.31 : 0.41)); ctx.scale(kt, kt);
+  G.texte(ctx, fmt(FIN.temps), 0, 0, PORTRAIT ? 76 : 60, FIN.record ? C.jaune : C.cyan, { police: 'titre', lueur: FIN.record ? C.jaune : C.cyan, contour: '#1a0630' });
+  ctx.restore();
+  let ligne, coulL = '#cfe';
+  if (FIN.record && FIN.ancien == null) { ligne = 'Premier temps ! À toi de le battre.'; coulL = C.jaune; }
+  else if (FIN.record) { ligne = `NOUVEAU RECORD ! ${fmt(FIN.ancien - FIN.temps).replace(' s', '')} s plus vite`; coulL = C.jaune; }
+  else ligne = `Record : ${fmt(L.recordTable(sv, FIN.table))} · encore ${fmt(FIN.temps - L.recordTable(sv, FIN.table))}`;
+  if (tEcran > 1.2) G.texte(ctx, ligne, cx, H * (PORTRAIT ? 0.365 : 0.5), Math.min(28, 28 * (W - 40) / G.largeur(ctx, ligne, 28)), coulL, { lueur: FIN.record ? C.jaune : null, flou: 8 });
+  if (FIN.penalites) G.texte(ctx, `dont ${FIN.penalites} s de pénalité (${FIN.erreurs} erreur${FIN.erreurs > 1 ? 's' : ''})`, cx, H * (PORTRAIT ? 0.395 : 0.55), 20, '#9aa3e0', {});
+  if (FIN.record && FIN.ancien != null && Math.random() < dt * 14) G.eclat(Math.random() * W, -10, 3, [C.jaune, C.rose, C.cyan, '#fff'], 120, { grav: 200, duree: 3, taille: 9, tourne: true, frot: 0.5 });
+  // tes derniers temps : on voit si on va plus vite
+  const hist = FIN.historique || [];
+  if (hist.length >= 2) {
+    const zy = H * (PORTRAIT ? 0.44 : 0.6), zh = PORTRAIT ? H * 0.2 : H * 0.17;
+    const nb = hist.length, bw = Math.min(70, (Math.min(W - 60, 640)) / nb - 12);
+    const tot2 = nb * (bw + 12) - 12, x0 = cx - tot2 / 2;
+    const max = Math.max(...hist), min = Math.min(...hist);
+    G.texte(ctx, 'Tes derniers temps', cx, zy, 20, '#9aa3e0', {});
+    hist.forEach((v, i) => {
+      const k = G.sortie((tEcran - 1 - i * 0.06) * 3);
+      const h = (zh - 50) * (0.25 + 0.75 * v / max) * k;
+      const x = x0 + i * (bw + 12), yb = zy + zh;
+      const dernier = i === nb - 1, best = v === min;
+      ctx.fillStyle = best ? C.jaune : dernier ? C.cyan : '#3a4590';
+      ctx.fillRect(x, yb - h, bw, h);
+      if (bw > 34 || dernier || best) G.texte(ctx, fmt(v).replace(' s', ''), x + bw / 2, yb - h - 14, Math.min(16, bw * 0.38), best ? C.jaune : dernier ? C.cyan : '#9aa3e0', { police: 'titre' });
+    });
+    ctx.fillStyle = '#5b63a8'; ctx.fillRect(x0 - 6, zy + zh, tot2 + 12, 2);
+  }
+  boutonsFin(H * (PORTRAIT ? 0.72 : 0.84));
 }
 
 // =====================================================================
@@ -2363,14 +2489,18 @@ function ecranTables(dt) {
   G.texteFige(ctx, 'MES TABLES', W / 2, PORTRAIT ? 120 : 44, PORTRAIT ? 40 : 34, C.cyan, { police: 'titre', lueur: C.cyan, contour: '#1a0630' });
   G.texte(ctx, `${b.connus} / ${b.total} connues   ★ ${b.etoiles} rapides`, W / 2, PORTRAIT ? 166 : 82, 24, '#dff', {});
   const top = PORTRAIT ? 200 : 104, bas = H - (PORTRAIT ? 140 : 70);
-  const cs = Math.min((W - 60) / 11.4, (bas - top) / 11);
-  const x0 = W / 2 - cs * 11.4 / 2, y0 = top;
+  const cs = Math.min((W - 40) / 13.5, (bas - top) / 11);
+  const x0 = W / 2 - cs * 13.5 / 2, y0 = top;
+  const xr = x0 + cs * 11.5;   // colonne des records
+  G.texte(ctx, 'RECORD', xr + cs, y0 + cs * 0.5, cs * 0.26, C.jaune, { police: 'titre' });
   // en-tête colonnes
   for (let j = 1; j <= 10; j++) G.texte(ctx, String(j), x0 + cs * 1.4 + (j - 0.5) * cs, y0 + cs * 0.5, cs * 0.42, C.rose, { police: 'titre' });
   for (let i = 1; i <= 10; i++) {
     const y = y0 + i * cs;
     const connue = L.tableConnue(sv.maitrise, i);
     bouton('t' + i, x0, y + 2, cs * 1.3, cs - 4, { texte: '×' + i, taille: cs * (i === 10 ? 0.34 : 0.42), police: 'titre', couleur: connue ? C.vert : C.cyan, flou: 6 }, () => lancerCourse({ mode: 'entrainement', table: i }));
+    const rt = L.recordTable(sv, i);
+    G.texte(ctx, rt != null ? fmt(rt).replace(' s', '') : '--', xr + cs, y + cs / 2, cs * (rt != null && rt >= 60 ? 0.24 : 0.3), rt != null ? C.jaune : '#5b63a8', { police: 'titre' });
     for (let j = 1; j <= 10; j++) {
       const x = x0 + cs * 1.4 + (j - 1) * cs;
       const n = L.niveau(sv.maitrise[L.cle(i, j)]);
@@ -2393,7 +2523,7 @@ function ecranTables(dt) {
     ctx.fillStyle = COUL_NIV[n]; ctx.fillRect(x - lw / 2 + 4, ly - 9, 18, 18);
     G.texte(ctx, t, x - lw / 2 + 28, ly, 18, '#cfe', { align: 'left' });
   });
-  G.texte(ctx, 'Touche une table pour t\'entraîner !', W / 2, ly + (PORTRAIT ? 50 : 34), 22, C.jaune, {});
+  G.texte(ctx, 'Touche une table pour t\'entraîner et battre ton record !', W / 2, ly + (PORTRAIT ? 50 : 34), 22, C.jaune, {});
 }
 
 // =====================================================================
@@ -2470,25 +2600,42 @@ function surveillerFluidite(dt) {
 
 // ---------- Entrées ----------
 function point(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * (cv.width / r.width) / ECH, y: (e.clientY - r.top) * (cv.height / r.height) / ECH }; }
+// Les boutons s'enfoncent au toucher et agissent au relâchement : c'est le relâchement qui compte
+// comme un vrai geste pour le navigateur (plein écran, installation, son). Le pavé numérique agit tout de suite.
+function boutonSous(p) {
+  for (let i = boutons.length - 1; i >= 0; i--) {
+    const b = boutons[i];
+    if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) return b;
+  }
+  return null;
+}
+let enfonce = null;
 cv.addEventListener('pointerdown', e => {
   e.preventDefault();
   S.init();
-  if (!bienvenueDite && ecran === 'titre') { bienvenueDite = true; setTimeout(() => S.voix('bienvenue'), 300); S.jouerMusique('menu'); }
   const p = point(e);
-  for (let i = boutons.length - 1; i >= 0; i--) {
-    const b = boutons[i];
-    if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) {
-      if (!b.action) return;
-      appui = { id: b.id, t: temps };
-      if (!b.id.startsWith('k')) S.sfx('clic');
-      G.grille.choc(p.x, p.y, 120, 160);
-      G.eclat(p.x, p.y, 6, [C.cyan, '#fff'], 200, { grav: 0, duree: 0.3, taille: 5 });
-      b.action();
-      return;
-    }
-  }
-  G.grille.choc(p.x, p.y, 160, 200);
+  const b = boutonSous(p);
+  if (!b) { G.grille.choc(p.x, p.y, 160, 200); return; }
+  if (!b.action) return;
+  appui = { id: b.id, t: temps + 10 };   // reste enfoncé jusqu'au relâchement
+  G.grille.choc(p.x, p.y, 120, 160);
+  if (b.id.startsWith('k')) { appui.t = temps; b.action(); enfonce = null; return; }
+  enfonce = { id: b.id, x: p.x, y: p.y };
 });
+cv.addEventListener('pointerup', e => {
+  e.preventDefault();
+  S.init();
+  if (!bienvenueDite && ecran === 'titre') { bienvenueDite = true; setTimeout(() => S.voix('bienvenue'), 300); S.jouerMusique('menu'); }
+  const d = enfonce; enfonce = null;
+  if (appui) appui.t = temps;
+  if (!d) return;
+  const b = boutonSous(point(e));
+  if (!b || b.id !== d.id || !b.action) return;
+  S.sfx('clic');
+  G.eclat(d.x, d.y, 6, [C.cyan, '#fff'], 200, { grav: 0, duree: 0.3, taille: 5 });
+  b.action();
+});
+cv.addEventListener('pointercancel', () => { enfonce = null; if (appui) appui.t = temps; });
 window.addEventListener('keydown', e => {
   if (!document.getElementById('nom-boite').hidden) return;
   S.init();
@@ -2512,7 +2659,8 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); instal
 
 function allerPleinEcran() {
   try {
-    if (matchMedia('(pointer: coarse)').matches && document.fullscreenEnabled && !document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+    const el = document.documentElement, req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (matchMedia('(pointer: coarse)').matches && req && !pleinEcranActif()) { const r = req.call(el, { navigationUI: 'hide' }); if (r && r.catch) r.catch(() => {}); }
   } catch (e) {}
   try { if (navigator.wakeLock) navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
 }

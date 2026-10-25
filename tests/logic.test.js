@@ -88,6 +88,21 @@ test('entraînement : toute la table, sans perdre de coeur', () => {
   L.repondre(c, 0, 2);
   assert.strictEqual(c.coeurs, 3);
   assert.strictEqual(c.file.length, 10);
+  assert.strictEqual(c.temps, 2 + L.PENALITE, 'le chrono compte, avec la pénalité');
+});
+
+test('record d\'entraînement par table', () => {
+  const sv = L.nouvelleSauvegarde();
+  let r = L.enregistrerTable(sv, 7, 40);
+  assert.ok(r.record); assert.strictEqual(r.ancien, null);
+  r = L.enregistrerTable(sv, 7, 45);
+  assert.ok(!r.record); assert.strictEqual(L.recordTable(sv, 7), 40);
+  r = L.enregistrerTable(sv, 7, 31.5);
+  assert.ok(r.record); assert.strictEqual(r.ancien, 40);
+  assert.deepStrictEqual(r.historique, [40, 45, 31.5]);
+  for (let i = 0; i < 10; i++) L.enregistrerTable(sv, 7, 50);
+  assert.strictEqual(sv.recordsTables[7].historique.length, 8);
+  assert.strictEqual(L.recordTable(sv, 3), null);
 });
 
 test('astuces : le calcul affiché donne toujours le bon résultat', () => {
