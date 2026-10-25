@@ -194,16 +194,21 @@ function ecranTitre(dt) {
   G.texte(ctx, `${b.connus} / ${b.total} multiplications connues`, cx, by + 42, 24, '#dff', {});
 
   // boutons
-  const bw2 = Math.min(420, W * 0.8), bh = PORTRAIT ? 96 : 84;
-  const y1 = PORTRAIT ? H * 0.68 : by + 80;
-  bouton('jouer', cx - bw2 / 2, y1, bw2, bh, { texte: 'JOUER', taille: bh * 0.42, police: 'titre', couleur: C.jaune, flou: 24 + Math.sin(temps * 5) * 8 }, () => {
-    if (!bienvenueDite) { bienvenueDite = true; }
-    allerPleinEcran();
-    aller('coupes');
-  });
-  const bw3 = (bw2 - 16) / 2;
-  bouton('tables', cx - bw2 / 2, y1 + bh + 18, bw3, bh * 0.78, { texte: 'MES TABLES', taille: Math.min(bh * 0.24, bw3 / 11), police: 'titre', couleur: C.cyan }, () => aller('tables'));
-  bouton('astuces', cx + 8, y1 + bh + 18, bw3, bh * 0.78, { texte: 'ASTUCES', taille: Math.min(bh * 0.24, bw3 / 8), police: 'titre', couleur: C.violet }, () => aller('astuces'));
+  // les trois modes, à égalité, dans l'ordre : apprendre, s'entraîner, se défier
+  const modes = [
+    { id: 'apprendre', texte: 'APPRENDRE', sous: 'astuces et cartes', couleur: C.violet, action: () => aller('astuces') },
+    { id: 'entrainement', texte: 'ENTRAÎNEMENT', sous: 'bats ton record', couleur: C.cyan, action: () => aller('tables') },
+    { id: 'defi', texte: 'DÉFI', sous: 'coupes et rivaux', couleur: C.jaune, action: () => { allerPleinEcran(); aller('coupes'); } },
+  ];
+  if (PORTRAIT) {
+    const bw = Math.min(520, W - 80), bh = 104, gap = 20;
+    const y0 = H - 110 - 3 * bh - 2 * gap;
+    modes.forEach((m, i) => bouton(m.id, cx - bw / 2, y0 + i * (bh + gap), bw, bh, { texte: m.texte, taille: 32, police: 'titre', dy: -14, sous: m.sous, tailleSous: 22, couleur: m.couleur, flou: 18 }, m.action));
+  } else {
+    const gap = 22, bw = Math.min(340, (W - 80 - 2 * gap) / 3), bh = 82;
+    const y0 = by + 68;
+    modes.forEach((m, i) => bouton(m.id, cx - (3 * bw + 2 * gap) / 2 + i * (bw + gap), y0, bw, bh, { texte: m.texte, taille: Math.min(26, bw / 13), police: 'titre', dy: -12, sous: m.sous, tailleSous: 20, couleur: m.couleur, flou: 18 }, m.action));
+  }
 
   boutonsSon(20, H - 84, 64);
   boutonPleinEcran(20 + 2 * (64 + 12), H - 84, 64);
@@ -293,7 +298,7 @@ function dessinerAide() {
 function ecranCoupes(dt) {
   decoMaj(dt, false); decoDessin();
   boutonRetour(20, 20);
-  G.texteFige(ctx, 'CHOISIS TA COUPE', W / 2, PORTRAIT ? 120 : 50, PORTRAIT ? 36 : 34, C.jaune, { police: 'titre', lueur: C.jaune, contour: '#1a0630' });
+  G.texteFige(ctx, 'DÉFI', W / 2, PORTRAIT ? 120 : 50, PORTRAIT ? 44 : 38, C.jaune, { police: 'titre', lueur: C.jaune, contour: '#1a0630' });
   // classes
   const ty = PORTRAIT ? 170 : 96, th = 78;
   const tw = Math.min(220, (W - 80) / 3);
@@ -1223,7 +1228,7 @@ let F = null;   // paquet de cartes en cours
 
 function ecranAstuces(dt) {
   boutonRetour(20, 20);
-  G.texteFige(ctx, 'ASTUCES', W / 2, PORTRAIT ? 120 : 46, PORTRAIT ? 44 : 38, C.violet, { police: 'titre', lueur: C.violet, contour: '#1a0630' });
+  G.texteFige(ctx, 'APPRENDRE', W / 2, PORTRAIT ? 120 : 46, PORTRAIT ? 44 : 38, C.violet, { police: 'titre', lueur: C.violet, contour: '#1a0630' });
   G.texte(ctx, 'Des cartes pour calculer plus vite', W / 2, PORTRAIT ? 172 : 90, 26, '#dff', {});
   const cols = PORTRAIT ? 2 : 5, gap = 14;
   const top = PORTRAIT ? 220 : 124;
@@ -1452,7 +1457,7 @@ function finCartes() {
   const bw = Math.min(300, (W - 60) / 2), bh = 72, y = H * 0.62;
   bouton('encore', W / 2 - bw - 10, y, bw, bh, { texte: 'ENCORE', taille: 28, police: 'titre', couleur: C.violet }, () => lancerCartes(F.table));
   if (F.table) bouton('grange', W / 2 + 10, y, bw, bh, { texte: 'GRANGE', taille: 28, police: 'titre', couleur: C.vert }, () => lancerCourse({ mode: 'entrainement', table: F.table }));
-  else bouton('autres', W / 2 + 10, y, bw, bh, { texte: 'ASTUCES', taille: 28, police: 'titre', couleur: C.cyan }, () => { ecran = 'astuces'; tEcran = 0; });
+  else bouton('autres', W / 2 + 10, y, bw, bh, { texte: 'APPRENDRE', taille: 26, police: 'titre', couleur: C.violet }, () => { ecran = 'astuces'; tEcran = 0; });
 }
 
 // =====================================================================
@@ -1462,7 +1467,7 @@ const COUL_NIV = ['#262d6e', '#ff3a5c', '#ff9d3c', '#45e07a', '#ffd23f'];
 function ecranTables(dt) {
   boutonRetour(20, 20);
   const b = L.bilan(sv.maitrise);
-  G.texteFige(ctx, 'MES TABLES', W / 2, PORTRAIT ? 120 : 44, PORTRAIT ? 40 : 34, C.cyan, { police: 'titre', lueur: C.cyan, contour: '#1a0630' });
+  G.texteFige(ctx, 'ENTRAÎNEMENT', W / 2, PORTRAIT ? 120 : 44, PORTRAIT ? 36 : 34, C.cyan, { police: 'titre', lueur: C.cyan, contour: '#1a0630' });
   G.texte(ctx, `${b.connus} / ${b.total} connues   ★ ${b.etoiles} rapides`, W / 2, PORTRAIT ? 166 : 82, 24, '#dff', {});
   const top = PORTRAIT ? 200 : 104, bas = H - (PORTRAIT ? 140 : 70);
   const cs = Math.min((W - 40) / 13.5, (bas - top) / 11);

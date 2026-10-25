@@ -1,6 +1,6 @@
 # Pluie de Cochons
 
-Jeu pour apprendre les tables de multiplication. On demande la taille d'une grange (longueur × largeur), on tape sa réponse et autant de cochons tombent du ciel : il en manque, c'est juste, ou ça déborde. Coupes façon kart en 50, 100 et 150cc contre 8 rivaux, 3 cœurs, chrono, et une grille « Mes tables » pour suivre ce qui est su.
+Jeu pour apprendre les tables de multiplication, en trois modes : Apprendre (une astuce par table et des flash cards expliquées), Entraînement (une table à la fois, chrono et record) et Défi (coupes façon kart en 50, 100 et 150cc contre 8 rivaux, 3 cœurs). Dans la grange, on tape sa réponse et autant de cochons tombent du ciel : il en manque, c'est juste, ou ça déborde.
 
 - Jouer / installer : https://pikifou.github.io/pluie-de-cochons/
 - Android (Chrome) : bouton « Installer » sur l'écran titre.
