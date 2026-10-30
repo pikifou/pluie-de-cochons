@@ -284,6 +284,7 @@ function iconePleinEcran(c, w, h) {
 }
 function boutonPleinEcran(x, y, t) {
   if (AUTONOME && !document.fullscreenEnabled) return;   // appli installée : déjà en plein écran
+  if (DANS_LUDI) return;                                 // dans Ludiworld, c'est Ludiworld qui décide du plein écran
   bouton('pleinecran', x, y, t, t, { couleur: C.violet, dessin: iconePleinEcran }, basculerPleinEcran);
 }
 

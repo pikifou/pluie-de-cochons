@@ -39,17 +39,50 @@ def page(pwa):
     return h
 
 def icones(dossier):
-    from PIL import Image, ImageDraw
+    """Icônes de l'appli : le héros en gros pixels sur un horizon néon, pleine page, sans cadre
+    (elles restent belles quand le téléphone ou Ludiworld arrondissent les coins)."""
+    from PIL import Image, ImageDraw, ImageFilter
     hero = Image.open(os.path.join(ICI, 'assets/img/heros.png')).convert('RGBA')
-    for taille in (180, 192, 512):
-        im = Image.new('RGBA', (taille, taille), (7, 10, 36, 255))
+
+    def lerp(a, b, k): return tuple(round(a[i] + (b[i] - a[i]) * k) for i in range(3))
+
+    def petit_cochon(d, x, y, s):
+        motif = ['.XX..XX.', 'XXXXXXXX', 'XOXXXXOX', 'XXXXXXXX', 'XXNNNNXX', 'XXNFFNXX', 'XXXXXXXX', '.XX..XX.']
+        couleurs = {'X': (255, 150, 190), 'O': (20, 10, 40), 'N': (255, 110, 160), 'F': (120, 30, 70)}
+        for j, ligne in enumerate(motif):
+            for i, ch in enumerate(ligne):
+                if ch != '.': d.rectangle([x + i * s, y + j * s, x + i * s + s - 1, y + j * s + s - 1], fill=couleurs[ch])
+
+    for n in (180, 192, 512):
+        im = Image.new('RGB', (n, n))
         d = ImageDraw.Draw(im)
-        e = taille // 24
-        d.rectangle([e, e, taille - e - 1, taille - e - 1], outline=(77, 243, 255, 255), width=max(3, taille // 64))
-        s = int(taille * 0.72)
-        h = hero.resize((s, s), Image.NEAREST)
-        im.alpha_composite(h, ((taille - s) // 2, (taille - s) // 2 + taille // 40))
-        im.save(os.path.join(dossier, 'icon-%d.png' % taille))
+        hz = int(n * 0.70)  # ligne d'horizon
+        for y in range(n):
+            if y < hz:
+                k = y / hz
+                c = lerp((6, 8, 34), (40, 12, 78), min(1, k * 1.25)) if k < .8 else lerp((40, 12, 78), (255, 79, 163), (k - .8) / .2 * .55)
+            else:
+                c = lerp((40, 10, 70), (8, 6, 30), (y - hz) / (n - hz))
+            d.line([(0, y), (n, y)], fill=c)
+        sol = Image.new('RGBA', (n, n), (0, 0, 0, 0))
+        ds = ImageDraw.Draw(sol)
+        for i in range(1, 9):
+            y = hz + (n - hz) * (i / 8) ** 1.8
+            ds.line([(0, y), (n, y)], fill=(77, 243, 255, 150), width=max(1, n // 256))
+        for i in range(-9, 10):
+            ds.line([(n / 2 + i * n * 0.05, hz), (n / 2 + i * n * 0.32, n)], fill=(77, 243, 255, 130), width=max(1, n // 256))
+        im.paste(sol, (0, 0), sol)
+        d.line([(0, hz), (n, hz)], fill=(255, 140, 200), width=max(2, n // 128))
+        halo = Image.new('RGBA', (n, n), (0, 0, 0, 0))
+        ImageDraw.Draw(halo).ellipse([n * .14, n * .16, n * .86, n * .88], fill=(255, 79, 163, 120))
+        halo = halo.filter(ImageFilter.GaussianBlur(n // 14))
+        im.paste(halo, (0, 0), halo)
+        for fx, fy, div in ((.07, .10, 128), (.80, .05, 128), (.84, .40, 170), (.05, .46, 170)):
+            petit_cochon(d, int(n * fx), int(n * fy), max(2, n // div))
+        t = int(n * 0.74)
+        h = hero.resize((t, t), Image.NEAREST)
+        im.paste(h, ((n - t) // 2, int(n * 0.92) - t), h)
+        im.save(os.path.join(dossier, 'icon-%d.png' % n))
 
 def main():
     if '--pwa' in sys.argv:
