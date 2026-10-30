@@ -2,7 +2,10 @@
 """Construit Pluie de Cochons.
 
 python3 build.py            -> index.html autonome (tout intégré, pour l'artefact)
-python3 build.py --pwa docs -> appli installable dans docs/ (GitHub Pages)
+python3 build.py --pwa docs -> appli installable dans docs/ (GitHub Pages), avec la fiche Ludiworld ludi.json
+
+src/ludi.js est le kit Ludiworld, copié tel quel depuis https://pikifou.github.io/ludiworld/kit/ludi.js
+(intégré à la page pour marcher hors ligne).
 """
 import base64, json, os, sys, shutil, hashlib
 
@@ -26,7 +29,7 @@ def page(pwa):
     h = h.replace('/*FONT_PS2*/', b64('assets/fonts/pressstart.woff2', 'font/woff2'))
     h = h.replace('/*FONT_PDC*/', b64('assets/fonts/pixelify-700.woff2', 'font/woff2'))
     h = h.replace('/*ASSETS*/', json.dumps(assets(pwa)))
-    for cle, f in [('LOGIC', 'logic'), ('AUDIO', 'audio'), ('GFX', 'gfx'), ('GAME', 'game')]:
+    for cle, f in [('LUDI', 'ludi'), ('LOGIC', 'logic'), ('AUDIO', 'audio'), ('GFX', 'gfx'), ('GAME', 'game')]:
         h = h.replace('/*%s*/' % cle, lire('src/%s.js' % f))
     if pwa:
         h = h.replace('<!--PWA-->', '<link rel="manifest" href="manifest.webmanifest">\n<link rel="icon" href="icon-192.png">\n<link rel="apple-touch-icon" href="icon-180.png">')
@@ -57,6 +60,8 @@ def main():
         for f in os.listdir(os.path.join(ICI, 'assets/music')):
             shutil.copy(os.path.join(ICI, 'assets/music', f), os.path.join(dossier, 'music', f))
         icones(dossier)
+        # fiche Ludiworld, à la racine du site publié (pas dans le cache du service worker : toujours fraîche)
+        shutil.copy(os.path.join(ICI, 'ludi.json'), os.path.join(dossier, 'ludi.json'))
         manifest = {
             'id': './', 'name': 'Pluie de Cochons', 'short_name': 'Cochons', 'lang': 'fr', 'orientation': 'any',
             'description': 'Les tables de multiplication avec des cochons qui tombent du ciel.',

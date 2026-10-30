@@ -1,0 +1,43 @@
+{
+  "ludi": 1,
+  "id": "pluie-de-cochons",
+  "status": "draft",
+  "title": { "fr": "Pluie de Cochons", "en": "Raining Pigs" },
+  "pitch": {
+    "fr": "Une grange de 7 sur 8 : combien de cochons ? Tape ta réponse et autant de cochons tombent du ciel. Il en manque, c'est juste, ou ça déborde.",
+    "en": "A 7 by 8 barn: how many pigs? Type your answer and that many pigs fall from the sky. Too few, just right, or overflowing."
+  },
+  "url": "https://pikifou.github.io/pluie-de-cochons/",
+  "icon": "https://pikifou.github.io/pluie-de-cochons/icon-512.png",
+  "color": "#070a24",
+  "author": { "name": "Julien", "url": "https://github.com/pikifou/pluie-de-cochons" },
+  "languages": ["fr"],
+  "age": { "min": 6, "max": 10 },
+  "reading": "some",
+  "learning": {
+    "level": "core",
+    "domains": ["maths.multiplication", "maths.calcul-mental"],
+    "what": {
+      "fr": "Les tables de multiplication de 1 à 10, jusqu'à les connaître par cœur et vite.",
+      "en": "Times tables from 1 to 10, until they are known by heart and fast."
+    },
+    "how": {
+      "fr": "Une astuce par table (×9 = ×10 moins une fois…), des flash cards expliquées avec la grille de cochons découpée en groupes, puis de l'entraînement chronométré et des courses contre des rivaux. Les multiplications mal sues reviennent plus souvent.",
+      "en": "One trick per table (×9 = ×10 minus one…), explained flash cards with the pig grid split into groups, then timed practice and races against rivals. Weak facts come back more often."
+    }
+  },
+  "session": { "minutes": [3, 10], "natural_end": true, "total_hours": 6 },
+  "content": {
+    "fr": "Compétition contre des rivaux fictifs (animaux), chrono et cœurs. Aucun vrai joueur.",
+    "en": "Competition against fictional animal rivals, with a timer and hearts. No real players."
+  },
+  "devices": ["phone", "tablet", "computer"],
+  "offline": true,
+  "healthy": {
+    "no_ads": true, "no_purchases": true, "no_subscription": true, "no_loot_boxes": true,
+    "no_daily_pressure": true, "no_notifications": true, "no_strangers": true, "no_tracking": true,
+    "natural_stops": true
+  },
+  "third_parties": [],
+  "kit": true
+}

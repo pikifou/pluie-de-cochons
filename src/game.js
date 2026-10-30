@@ -21,6 +21,29 @@ function charger() {
 }
 function sauver() { try { localStorage.setItem(CLE, JSON.stringify(sv)); } catch (e) {} }
 
+// ---------- Ludiworld (kit ludi.js) ----------
+// Ouvert seul, le kit garde ses données dans le navigateur et le jeu ne change pas.
+// Ouvert depuis le launcher Ludiworld, records, progression et multiplications travaillées lui remontent.
+const LUDI = window.Ludi ? window.Ludi.init({ game: 'pluie-de-cochons' }) : null;
+const DANS_LUDI = !!(LUDI && LUDI.inLauncher());
+function ludiFait(a, b, juste) { if (LUDI) LUDI.skill('maths.multiplication', L.cle(a, b), juste); }
+function ludiProgression() {
+  if (!LUDI) return;
+  LUDI.progress('multiplications-sues', L.bilan(sv.maitrise).connus);
+  LUDI.progress('coupes-debloquees', L.coupesDebloquees(sv).length);
+}
+// Dans Ludiworld, le nom vient toujours du profil choisi par le parent (sur une tablette partagée,
+// le nom gardé par le jeu pourrait être celui d'un frère ou d'une sœur). Ouvert seul, c'est le nom de la sauvegarde.
+function nomJoueur() {
+  const p = LUDI && DANS_LUDI ? LUDI.player() : null;
+  return p ? p.name.slice(0, 14) : sv.nom;
+}
+// Fin d'une course ou d'une série de cartes : l'enfant peut s'arrêter ici sans rien perdre.
+function ludiFinManche(quoi) {
+  ludiProgression();
+  if (LUDI) LUDI.checkpoint(quoi);
+}
+
 // ---------- Utilitaires ----------
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -146,6 +169,8 @@ function boutonsSon(x, y, t) {
   bouton('hp', x + t + 12, y, t, t, { couleur: C.violet, dessin: iconeHP }, () => { sv.bruitages = sv.bruitages > 0 ? 0 : 1; S.volBruitages = sv.bruitages; S.appliquerVolumes(); sauver(); S.sfx('clic'); });
 }
 function boutonRetour(x, y) {
+  // Dans Ludiworld, le bouton « ← Ludiworld » du launcher occupe le coin haut gauche (~120 px de large) : on se met à sa droite.
+  if (DANS_LUDI) x = Math.max(x, 130 * cv.width / window.innerWidth / ECH);
   bouton('retour', x, y, 120, 56, { texte: '< Retour', taille: 24, couleur: C.violet }, () => retour(false));
 }
 
@@ -181,7 +206,7 @@ function ecranTitre(dt) {
   G.portrait(ctx, 'heros', cx - ps / 2, py + bob, ps);
   ctx.restore();
   const nomY = py + ps + 34;
-  bouton('nom', cx - 150, nomY - 28, 300, 56, { texte: sv.nom + '  ✎', taille: 30, couleur: C.rose }, () => editerNom());
+  bouton('nom', cx - 150, nomY - 28, 300, 56, { texte: nomJoueur() + (DANS_LUDI ? '' : '  ✎'), taille: 30, couleur: C.rose }, () => { if (!DANS_LUDI) editerNom(); });
 
   // progression
   const b = L.bilan(sv.maitrise);
@@ -212,7 +237,7 @@ function ecranTitre(dt) {
 
   boutonsSon(20, H - 84, 64);
   boutonPleinEcran(20 + 2 * (64 + 12), H - 84, 64);
-  if (!AUTONOME) bouton('installer', W - 230, H - 84, 210, 64, { texte: 'Installer', taille: 26, couleur: C.vert }, installer);
+  if (!AUTONOME && !DANS_LUDI) bouton('installer', W - 230, H - 84, 210, 64, { texte: 'Installer', taille: 26, couleur: C.vert }, installer);
   if (aide) dessinerAide();
 }
 
@@ -368,7 +393,7 @@ function ecranDepart(dt) {
   const ty = PORTRAIT ? 120 : 50;
   G.texteFige(ctx, cp.nom.toUpperCase(), W / 2, ty, PORTRAIT ? 34 : 32, cp.couleur, { police: 'titre', lueur: cp.couleur, contour: '#1a0630' });
   G.texte(ctx, `${cl.nom} · ${cl.granges} granges · ${cp.speciale ? 'toutes les tables' : 'tables de ' + cp.tables.join(', ')}`, W / 2, ty + 44, 24, '#dff', {});
-  const lignes = L.classement(cp.id, cl.id, rec ? rec.temps : null, sv.nom);
+  const lignes = L.classement(cp.id, cl.id, rec ? rec.temps : null, nomJoueur());
   const lh = Math.min(58, (H - ty - 260) / 9);
   const lw = Math.min(560, W - 40);
   const x0 = W / 2 - lw / 2, y0 = ty + 80;
@@ -495,6 +520,7 @@ function valider() {
   R.rep = rep;
   R.res = L.repondre(R.course, rep, R.tq, sv.maitrise);
   sauver();
+  ludiFait(R.res.q.a, R.res.q.b, R.res.juste);
   // cochons à faire tomber
   const p = R.q.a * R.q.b;
   R.aLancer = Math.min(rep, p + 60);
@@ -738,6 +764,7 @@ function finCourse() {
     } else {
       const r = L.enregistrer(sv, R.coupe, R.classe, c.temps);
       sauver();
+      if (LUDI) LUDI.score('coupe-' + R.coupe + '-' + L.classe(R.classe).nom, c.temps, { better: 'lower' });
       FIN = { mode: 'coupe', perdue: false, coupe: R.coupe, classe: R.classe, temps: c.temps, place: r.place, record: r.record, ancien: r.ancien, nouvelles: r.nouvelles, penalites: c.penalites, premierCoup: c.premierCoup, objectif: c.objectif, erreurs: c.erreurs };
       const tr = L.trophee(r.place);
       setTimeout(() => { S.sfx(tr ? 'trophee' : 'oh'); }, 500);
@@ -749,6 +776,7 @@ function finCourse() {
   } else {
     const r = L.enregistrerTable(sv, R.table, c.temps);
     sauver();
+    if (LUDI) LUDI.score('table-' + R.table, c.temps, { better: 'lower' });
     FIN = { mode: 'entrainement', table: R.table, premierCoup: c.premierCoup, total: c.objectif, erreurs: c.erreurs, temps: c.temps, penalites: c.penalites, record: r.record, ancien: r.ancien, historique: r.historique };
     const n = c.premierCoup;
     setTimeout(() => { S.sfx(r.record ? 'trophee' : n >= 8 ? 'parfait' : 'oh'); }, 400);
@@ -756,6 +784,7 @@ function finCourse() {
   }
   ecran = 'resultats'; tEcran = 0;
   S.jouerMusique('menu');
+  ludiFinManche('course');
 }
 
 // ----- clavier -----
@@ -1139,7 +1168,7 @@ function ecranResultats(dt) {
   }
 
   // classement
-  const lignes = L.classement(FIN.coupe, FIN.classe, FIN.temps, sv.nom);
+  const lignes = L.classement(FIN.coupe, FIN.classe, FIN.temps, nomJoueur());
   const zx = PORTRAIT ? 20 : W * 0.44, zy = PORTRAIT ? yp + 120 : 110, zw = PORTRAIT ? W - 40 : W * 0.54, zh = PORTRAIT ? H - (yp + 120) - 130 : H - 230;
   const lh = Math.min(PORTRAIT ? 66 : 54, zh / 9);
   lignes.forEach((l, i) => {
@@ -1261,6 +1290,7 @@ function repondreCarte(savais) {
   const q = carteCourante();
   L.noter(sv.maitrise, q.a, q.b, savais, savais ? F.secondes : null);
   sauver();
+  ludiFait(q.a, q.b, savais);
   const k = L.cle(q.a, q.b);
   const premiere = !F.rejouees[k];
   if (savais) {
@@ -1278,6 +1308,7 @@ function repondreCarte(savais) {
   F.i++;
   if (F.i >= F.cartes.length) {
     F.etape = 'fin'; F.t = 0;
+    ludiFinManche('cartes');
     const n = F.sues;
     setTimeout(() => { S.sfx(n >= 8 ? 'trophee' : 'parfait'); S.voix(n >= 9 ? 'parfait' : n >= 7 ? 'bravo' : 'super'); }, 300);
   } else { F.etape = 'devant'; F.flip = 0; F.t = 0; F.tCarte = 0; }
@@ -1637,6 +1668,8 @@ document.addEventListener('visibilitychange', () => {
   else if (S.ctx) S.ctx.resume();
 });
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
+// Le launcher peut demander une pause (temps écoulé, parent qui reprend la main) : comme quand on quitte l'appli.
+if (LUDI) LUDI.onPause(() => { if (ecran === 'course' && R && R.phase !== 'fin') R.pauseMenu = true; });
 
 function allerPleinEcran() {
   try {
@@ -1649,7 +1682,7 @@ function allerPleinEcran() {
 // ---------- Saisie du prénom (champ HTML par-dessus le jeu) ----------
 function editerNom() {
   const boite = document.getElementById('nom-boite'), champ = document.getElementById('nom-champ');
-  champ.value = sv.nom;
+  champ.value = nomJoueur();
   boite.hidden = false;
   setTimeout(() => { champ.focus(); champ.select(); }, 50);
 }

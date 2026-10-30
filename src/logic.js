@@ -227,7 +227,7 @@ function repondre(c, rep, secondes, maitrise) {
 function nouvelleSauvegarde() {
   return {
     v: 1,
-    nom: 'Joshua',
+    nom: 'Joueur',
     maitrise: {},
     records: {},     // 'coupe:classe' -> { temps, place }
     recordsTables: {}, // table -> { temps, historique: [derniers temps] }
