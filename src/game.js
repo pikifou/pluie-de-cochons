@@ -19,7 +19,10 @@ function charger() {
   try { const s = JSON.parse(localStorage.getItem(CLE) || 'null'); if (s && s.v === 1) sv = Object.assign(L.nouvelleSauvegarde(), s); } catch (e) {}
   S.volMusique = sv.musique; S.volBruitages = sv.bruitages;
 }
-function sauver() { try { localStorage.setItem(CLE, JSON.stringify(sv)); } catch (e) {} }
+function sauver() {
+  try { localStorage.setItem(CLE, JSON.stringify(sv)); } catch (e) {}
+  if (window.Ludi) window.Ludi.save(sv); // Ludiworld la garde dans le compte du parent : l'enfant reprend sur un autre appareil
+}
 
 // ---------- Ludiworld (kit ludi.js) ----------
 // Ouvert seul, le kit garde ses données dans le navigateur et le jeu ne change pas.
@@ -1697,6 +1700,15 @@ function editerNom() {
 
 // ---------- Démarrage ----------
 charger();
+// Une sauvegarde plus récente venue d'un autre appareil : elle remplace la nôtre, sauf le son (propre à chaque appareil).
+if (window.Ludi) window.Ludi.onRestore(d => {
+  if (!d || d.v !== 1) return;
+  const musique = sv.musique, bruitages = sv.bruitages;
+  sv = Object.assign(L.nouvelleSauvegarde(), d, { musique, bruitages });
+  try { localStorage.setItem(CLE, JSON.stringify(sv)); } catch (e) {}
+});
+// Une partie commencée avant ce changement : on la confie aussi à Ludiworld (sans écraser une plus récente venue d'ailleurs).
+if (window.Ludi && localStorage.getItem(CLE)) window.Ludi.save(sv, { existante: true });
 G.init();
 G.reglerQualite(ctx, matchMedia('(pointer: coarse)').matches ? 1 : 2);
 try { history.replaceState({ e: 'titre' }, ''); } catch (e) {}
