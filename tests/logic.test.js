@@ -127,3 +127,23 @@ test('paquets : une table complète, ou 10 cartes difficiles', () => {
   assert.strictEqual(d.length, 10);
   assert.ok(d.some(q => q.a * q.b === 42), 'la carte ratée est dans le paquet');
 });
+
+test('fin : fini avec un trophée à la Coupe Étoile, coupes d\'or sur 15', () => {
+  const sv = L.nouvelleSauvegarde();
+  assert.strictEqual(L.fini(sv), false);
+  assert.deepStrictEqual(L.coupesOr(sv), { n: 0, total: 15 });
+  // un trophée dans les 4 premières coupes ne suffit pas
+  for (const id of ['paille', 'boue', 'gland', 'tracteur']) L.enregistrer(sv, id, '50', 1);
+  assert.strictEqual(L.fini(sv), false);
+  assert.ok(L.coupesDebloquees(sv).includes('etoile'));
+  assert.strictEqual(L.coupesOr(sv).n, 4);
+  // sans podium à la Coupe Étoile, pas encore fini
+  L.enregistrer(sv, 'etoile', '50', 999);
+  assert.strictEqual(L.fini(sv), false);
+  // un bronze suffit
+  const bronze = L.classement('etoile', '100', null).slice(0, 2).pop().temps + 0.05;
+  L.enregistrer(sv, 'etoile', '100', bronze);
+  assert.strictEqual(L.meilleurTrophee(sv, 'etoile', '100'), 3);
+  assert.strictEqual(L.fini(sv), true);
+  assert.strictEqual(L.coupesOr(sv).n, 4);
+});

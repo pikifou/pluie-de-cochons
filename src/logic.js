@@ -284,6 +284,16 @@ function meilleurTrophee(sv, coupeId, classeId) {
   return r ? trophee(r.place) : 0;
 }
 
+// ---------- La fin de l'histoire ----------
+// Le jeu est fini quand la Coupe Étoile (toutes les tables, ouverte après les 4 autres coupes) a un trophée, dans n'importe quelle classe.
+function fini(sv) { return CLASSES.some(cl => meilleurTrophee(sv, 'etoile', cl.id) > 0); }
+// Ce qui reste en option : les coupes d'or, une par coupe et par classe (5 × 3 = 15). Un record ne redescend jamais.
+function coupesOr(sv) {
+  let n = 0;
+  for (const cp of COUPES) for (const cl of CLASSES) if (meilleurTrophee(sv, cp.id, cl.id) === 1) n++;
+  return { n, total: COUPES.length * CLASSES.length };
+}
+
 // ---------- Astuces (mode flash cards) ----------
 const ASTUCES_TABLE = {
   1:  { titre: 'Fois 1 : rien ne change', lignes: ['Un seul groupe, c\'est le nombre lui-même.', '1 × 7 = 7'] },
@@ -363,6 +373,7 @@ const API = {
   candidats, tirerQuestions, questionsEntrainement,
   nouvelleCourse, questionCourante, verdict, repondre,
   nouvelleSauvegarde, cleRecord, coupesDebloquees, enregistrer, meilleurTrophee, enregistrerTable, recordTable,
+  fini, coupesOr,
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else root.L = API;

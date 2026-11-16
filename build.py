@@ -15,7 +15,10 @@ def b64(p, mime):
     return 'data:%s;base64,%s' % (mime, base64.b64encode(open(os.path.join(ICI, p), 'rb').read()).decode())
 
 def assets(musique_en_fichiers):
-    a = {'img': {}, 'voix': {}, 'music': {}}
+    a = {'img': {}, 'voix': {}, 'music': {}, 'histoire': {}}
+    # les images de l'histoire (intro et fin), intégrées pour marcher hors ligne et en fichier unique
+    for f in sorted(os.listdir(os.path.join(ICI, 'assets/histoire'))):
+        a['histoire'][f.rsplit('.', 1)[0]] = b64('assets/histoire/' + f, 'image/webp')
     for f in sorted(os.listdir(os.path.join(ICI, 'assets/img'))):
         a['img'][f[:-4]] = b64('assets/img/' + f, 'image/png')
     for f in sorted(os.listdir(os.path.join(ICI, 'assets/voix'))):
@@ -24,11 +27,15 @@ def assets(musique_en_fichiers):
         a['music'][f[:-4]] = ('music/' + f) if musique_en_fichiers else b64('assets/music/' + f, 'audio/mpeg')
     return a
 
+CINE = ['intro', 'fin']
+
 def page(pwa):
     h = lire('src/index.html')
     h = h.replace('/*FONT_PS2*/', b64('assets/fonts/pressstart.woff2', 'font/woff2'))
     h = h.replace('/*FONT_PDC*/', b64('assets/fonts/pixelify-700.woff2', 'font/woff2'))
     h = h.replace('/*ASSETS*/', json.dumps(assets(pwa)))
+    # les petites vidéos de l'histoire : seulement dans la version installée (le fichier unique montre directement l'image)
+    h = h.replace('/*CINE*/', json.dumps({n: 'cine/%s.mp4' % n for n in CINE} if pwa else {}))
     for cle, f in [('LUDI', 'ludi'), ('LOGIC', 'logic'), ('AUDIO', 'audio'), ('GFX', 'gfx'), ('GAME', 'game')]:
         h = h.replace('/*%s*/' % cle, lire('src/%s.js' % f))
     if pwa:
@@ -93,6 +100,8 @@ def main():
         for f in os.listdir(os.path.join(ICI, 'assets/music')):
             shutil.copy(os.path.join(ICI, 'assets/music', f), os.path.join(dossier, 'music', f))
         icones(dossier)
+        os.makedirs(os.path.join(dossier, 'cine'), exist_ok=True)
+        for n in CINE: shutil.copy(os.path.join(ICI, 'assets/cine', n + '.mp4'), os.path.join(dossier, 'cine'))
         # fiche Ludiworld, à la racine du site publié (pas dans le cache du service worker : toujours fraîche)
         shutil.copy(os.path.join(ICI, 'ludi.json'), os.path.join(dossier, 'ludi.json'))
         manifest = {
@@ -110,7 +119,7 @@ def main():
 const F = %s;
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(F)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== V).map(x => caches.delete(x)))).then(() => self.clients.claim())); });
-self.addEventListener('fetch', e => { e.respondWith(caches.match(e.request, { ignoreSearch: true }).then(r => r || fetch(e.request))); });
+self.addEventListener('fetch', e => { if (new URL(e.request.url).pathname.includes('/cine/')) return; e.respondWith(caches.match(e.request, { ignoreSearch: true }).then(r => r || fetch(e.request))); });
 """ % (version, json.dumps(fichiers))
         open(os.path.join(dossier, 'sw.js'), 'w').write(sw)
         print('PWA ->', dossier, 'version', version, '%.0f ko' % (len(html) / 1024))

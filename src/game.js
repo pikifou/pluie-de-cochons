@@ -41,6 +41,13 @@ function nomJoueur() {
   const p = LUDI && DANS_LUDI ? LUDI.player() : null;
   return p ? p.name.slice(0, 14) : sv.nom;
 }
+// Fini quand la Coupe Étoile a un trophée ; complet : les coupes d'or (5 coupes × 3 classes).
+// Appelé au moment où ça arrive et au démarrage (une sauvegarde venue d'un autre appareil peut déjà le dire).
+function ludiEtat() {
+  if (!LUDI || !L.fini(sv)) return;
+  LUDI.fini();
+  const o = L.coupesOr(sv); LUDI.complet(o.n / o.total);
+}
 // Fin d'une course ou d'une série de cartes : l'enfant peut s'arrêter ici sans rien perdre.
 function ludiFinManche(quoi) {
   ludiProgression();
@@ -178,6 +185,63 @@ function boutonRetour(x, y) {
 }
 
 // =====================================================================
+// L'HISTOIRE : une intro au premier choix d'un mode, une fin quand la Coupe Étoile est gagnée
+// =====================================================================
+// Une petite vidéo si elle est là (version installée), sinon directement l'image et le texte
+// (fichier unique, hors ligne, mouvement réduit).
+const TEXTES = {
+  fr: {
+    story1: 'Il pleut des cochons sur la ferme !',
+    story2: 'Remplis chaque grange avec le bon nombre de cochons, et gagne toutes les coupes jusqu’à la Coupe Étoile.',
+    storyGo: 'C’EST PARTI !', skip: 'PASSER',
+    endTitle: 'BRAVO !',
+    end1: 'Coupe Étoile gagnée : toutes les tables !',
+    end2: 'Tous les cochons sont à l’abri. Les multiplications, maintenant, tu les maîtrises !',
+    endGo: 'CONTINUER',
+  },
+  en: {
+    story1: 'It’s raining pigs on the farm!',
+    story2: 'Fill each barn with just the right number of pigs, and win every cup up to the Star Cup.',
+    storyGo: 'LET’S GO!', skip: 'SKIP',
+    endTitle: 'WELL DONE!',
+    end1: 'Star Cup won: all the times tables!',
+    end2: 'All the pigs are safe and dry. Now you’ve mastered multiplication!',
+    endGo: 'CONTINUE',
+  },
+};
+// Le jeu est en français : l'anglais est prêt pour le jour où le jeu le sera aussi.
+const LANGUE = (document.documentElement.lang || 'fr').slice(0, 2) === 'en' ? 'en' : 'fr';
+const tx = k => TEXTES[LANGUE][k];
+const MOINS_DE_MOUVEMENT = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+const CINE = {
+  intro: { video: (window.CINE || {}).intro, image: ASSETS.histoire.debut, titre: null, haut: true, l1: 'story1', l2: 'story2', go: 'storyGo' },
+  fin: { video: (window.CINE || {}).fin, image: ASSETS.histoire.fin, titre: 'endTitle', l1: 'end1', l2: 'end2', go: 'endGo' },
+};
+let cineOuverte = false;
+function cinematique(nom, ensuite) {
+  const c = CINE[nom], box = document.getElementById('cine'), vid = box.querySelector('video'), img = box.querySelector('img');
+  const h2 = box.querySelector('h2');
+  h2.textContent = c.titre ? tx(c.titre) : ''; h2.hidden = !c.titre;
+  box.querySelector('.l1').textContent = tx(c.l1); box.querySelector('.l2').textContent = tx(c.l2);
+  box.querySelector('.go').textContent = tx(c.go); box.querySelector('.passer').textContent = tx('skip');
+  img.src = c.image; box.classList.remove('texte'); box.classList.toggle('haut', !!c.haut); box.hidden = false; cineOuverte = nom;
+  const texte = () => { vid.pause(); box.classList.add('texte'); };
+  vid.onended = texte; vid.onerror = texte;
+  if (c.video && !MOINS_DE_MOUVEMENT) { vid.hidden = false; vid.src = c.video; const p = vid.play(); if (p && p.catch) p.catch(texte); }
+  else { vid.hidden = true; vid.removeAttribute('src'); texte(); }
+  box.querySelector('.go').onclick = () => { S.init(); S.sfx('clic'); vid.pause(); vid.removeAttribute('src'); box.hidden = true; cineOuverte = false; if (ensuite) ensuite(); };
+  box.querySelector('.passer').onclick = texte;
+}
+// L'intro se montre la première fois qu'on choisit un mode (puis plus jamais sur cet appareil ou ce compte).
+function avecIntro(action) {
+  return () => {
+    if (sv.introVue) { action(); return; }
+    sv.introVue = true; sauver();
+    cinematique('intro', action);
+  };
+}
+
+// =====================================================================
 // ÉCRAN TITRE
 // =====================================================================
 let bienvenueDite = false;
@@ -221,12 +285,26 @@ function ecranTitre(dt) {
   G.rectNeon(ctx, cx - bw / 2, by, bw, 20, C.vert, { flou: 6, epaisseur: 2, coins: false });
   G.texte(ctx, `${b.connus} / ${b.total} multiplications connues`, cx, by + 42, 24, '#dff', {});
 
+  // la marque « Fini » (une étoile et le mot, pas seulement une couleur) et les coupes d'or qui restent
+  if (L.fini(sv)) {
+    const o = L.coupesOr(sv);
+    const mw = 184, mh = 100, mx = cx + ps / 2 + 12, my = py + 8;
+    ctx.save(); ctx.translate(mx + mw / 2, my + mh / 2); ctx.rotate(0.06);
+    G.rectNeon(ctx, -mw / 2, -mh / 2, mw, mh, C.jaune, { fond: 'rgba(40,30,10,0.92)', flou: 14, epaisseur: 3, coin: 6 });
+    const xt = -mw / 2 + 62;
+    G.dessiner(ctx, G.etoile, -mw / 2 + 12, -mh / 2 + 10, 38, 38);
+    G.texte(ctx, 'FINI', xt, -mh / 2 + 30, 24, C.jaune, { police: 'titre', lueur: C.jaune, flou: 8, align: 'left' });
+    G.dessiner(ctx, G.trophees[1], -mw / 2 + 14, 6, 34, 32);
+    G.texte(ctx, `OR ${o.n}/${o.total}`, xt, 23, 16, '#fff', { police: 'titre', align: 'left' });
+    ctx.restore();
+  }
+
   // boutons
   // les trois modes, à égalité, dans l'ordre : apprendre, s'entraîner, se défier
   const modes = [
-    { id: 'apprendre', texte: 'APPRENDRE', sous: 'astuces et cartes', couleur: C.violet, action: () => aller('astuces') },
-    { id: 'entrainement', texte: 'ENTRAÎNEMENT', sous: 'bats ton record', couleur: C.cyan, action: () => aller('tables') },
-    { id: 'defi', texte: 'DÉFI', sous: 'coupes et rivaux', couleur: C.jaune, action: () => { allerPleinEcran(); aller('coupes'); } },
+    { id: 'apprendre', texte: 'APPRENDRE', sous: 'astuces et cartes', couleur: C.violet, action: avecIntro(() => aller('astuces')) },
+    { id: 'entrainement', texte: 'ENTRAÎNEMENT', sous: 'bats ton record', couleur: C.cyan, action: avecIntro(() => aller('tables')) },
+    { id: 'defi', texte: 'DÉFI', sous: 'coupes et rivaux', couleur: C.jaune, action: avecIntro(() => { allerPleinEcran(); aller('coupes'); }) },
   ];
   if (PORTRAIT) {
     const bw = Math.min(520, W - 80), bh = 104, gap = 20;
@@ -766,16 +844,23 @@ function finCourse() {
       FIN = { mode: 'coupe', perdue: true, coupe: R.coupe, classe: R.classe, temps: c.temps, justes: c.justes, objectif: c.objectif };
       setTimeout(() => S.voix('perdu'), 400);
     } else {
+      const dejaFini = L.fini(sv);
       const r = L.enregistrer(sv, R.coupe, R.classe, c.temps);
       sauver();
       if (LUDI) LUDI.score('coupe-' + R.coupe + '-' + L.classe(R.classe).nom, c.temps, { better: 'lower' });
       FIN = { mode: 'coupe', perdue: false, coupe: R.coupe, classe: R.classe, temps: c.temps, place: r.place, record: r.record, ancien: r.ancien, nouvelles: r.nouvelles, penalites: c.penalites, premierCoup: c.premierCoup, objectif: c.objectif, erreurs: c.erreurs };
       const tr = L.trophee(r.place);
-      setTimeout(() => { S.sfx(tr ? 'trophee' : 'oh'); }, 500);
-      setTimeout(() => S.voix(tr === 1 ? 'or' : tr === 2 ? 'argent' : tr === 3 ? 'bronze' : 'pasdepodium'), 1300);
-      let d = 4200;
-      if (r.record && r.ancien != null) { setTimeout(() => S.voix('record'), d); d += 1800; }
-      if (r.nouvelles.length) setTimeout(() => S.voix('debloque'), d);
+      const annonces = () => {
+        setTimeout(() => { S.sfx(tr ? 'trophee' : 'oh'); }, 500);
+        setTimeout(() => S.voix(tr === 1 ? 'or' : tr === 2 ? 'argent' : tr === 3 ? 'bronze' : 'pasdepodium'), 1300);
+        let d = 4200;
+        if (r.record && r.ancien != null) { setTimeout(() => S.voix('record'), d); d += 1800; }
+        if (r.nouvelles.length) setTimeout(() => S.voix('debloque'), d);
+      };
+      ludiEtat();
+      // la fin de l'histoire : la première fois que la Coupe Étoile est gagnée. Ensuite, le podium habituel.
+      if (!dejaFini && L.fini(sv)) { S.sfx('trophee'); cinematique('fin', () => { tEcran = 0; annonces(); }); }
+      else annonces();
     }
   } else {
     const r = L.enregistrerTable(sv, R.table, c.temps);
@@ -1653,7 +1738,7 @@ cv.addEventListener('pointerup', e => {
 });
 cv.addEventListener('pointercancel', () => { enfonce = null; if (appui) appui.t = temps; });
 window.addEventListener('keydown', e => {
-  if (!document.getElementById('nom-boite').hidden) return;
+  if (!document.getElementById('nom-boite').hidden || cineOuverte) return;
   S.init();
   if (ecran === 'course' && R) {
     if (/^[0-9]$/.test(e.key)) { touche(e.key); appui = { id: 'k' + e.key, t: temps }; }
@@ -1706,9 +1791,11 @@ if (window.Ludi) window.Ludi.onRestore(d => {
   const musique = sv.musique, bruitages = sv.bruitages;
   sv = Object.assign(L.nouvelleSauvegarde(), d, { musique, bruitages });
   try { localStorage.setItem(CLE, JSON.stringify(sv)); } catch (e) {}
+  ludiEtat();
 });
 // Une partie commencée avant ce changement : on la confie aussi à Ludiworld (sans écraser une plus récente venue d'ailleurs).
 if (window.Ludi && localStorage.getItem(CLE)) window.Ludi.save(sv, { existante: true });
+ludiEtat();
 G.init();
 G.reglerQualite(ctx, matchMedia('(pointer: coarse)').matches ? 1 : 2);
 try { history.replaceState({ e: 'titre' }, ''); } catch (e) {}
@@ -1716,5 +1803,5 @@ Promise.race([document.fonts ? document.fonts.load('40px PS2').then(() => docume
   .finally(() => requestAnimationFrame(boucle));
 
 // pour les tests automatiques
-window.__jeu = { get F() { return F; }, lancerCartes, retourner, repondreCarte, get R() { return R; }, get ecran() { return ecran; }, lancerCourse, touche, aller, sv: () => sv, set choixCoupe(v) { choixCoupe = v; } };
+window.__jeu = { cinematique, get cineOuverte() { return cineOuverte; }, finCourse: () => finCourse(), get F() { return F; }, lancerCartes, retourner, repondreCarte, get R() { return R; }, get ecran() { return ecran; }, lancerCourse, touche, aller, sv: () => sv, set choixCoupe(v) { choixCoupe = v; } };
 })();
