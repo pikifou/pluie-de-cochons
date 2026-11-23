@@ -232,8 +232,6 @@ function nouvelleSauvegarde() {
     records: {},     // 'coupe:classe' -> { temps, place }
     recordsTables: {}, // table -> { temps, historique: [derniers temps] }
     debloquees: ['paille'],
-    musique: 0.7,
-    bruitages: 1,
     classe: '50',
     vuesDeblocage: [],
   };

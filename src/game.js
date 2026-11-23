@@ -17,8 +17,10 @@ const CLE = 'pluie-de-cochons.v1';
 let sv = L.nouvelleSauvegarde();
 function charger() {
   try { const s = JSON.parse(localStorage.getItem(CLE) || 'null'); if (s && s.v === 1) sv = Object.assign(L.nouvelleSauvegarde(), s); } catch (e) {}
-  S.volMusique = sv.musique; S.volBruitages = sv.bruitages;
+  sansSon(sv);
 }
+// Le son n'est plus dans la sauvegarde : c'est Ludiworld qui le règle (une vieille partie avec la musique coupée ne rend plus le jeu muet).
+function sansSon(o) { delete o.musique; delete o.bruitages; return o; }
 function sauver() {
   try { localStorage.setItem(CLE, JSON.stringify(sv)); } catch (e) {}
   if (window.Ludi) window.Ludi.save(sv); // Ludiworld la garde dans le compte du parent : l'enfant reprend sur un autre appareil
@@ -29,6 +31,16 @@ function sauver() {
 // Ouvert depuis le launcher Ludiworld, records, progression et multiplications travaillées lui remontent.
 const LUDI = window.Ludi ? window.Ludi.init({ game: 'pluie-de-cochons' }) : null;
 const DANS_LUDI = !!(LUDI && LUDI.inLauncher());
+// Le son : réglé par Ludiworld pour toute la maison (ouvert seul : pour cet appareil), trois réglages séparés,
+// tous allumés au départ. Les boutons du jeu le changent partout (Ludi.reglerSon).
+let son = { musique: true, bruitages: true, voix: true };
+function appliquerSon(s) {
+  son = { musique: s.musique !== false, bruitages: s.bruitages !== false, voix: s.voix !== false };
+  S.regler(son);
+  if (!son.voix) { try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e) {} }
+}
+function reglerSon(o) { if (LUDI) LUDI.reglerSon(o); else appliquerSon(Object.assign({}, son, o)); }
+if (LUDI) LUDI.onSon(appliquerSon);
 function ludiFait(a, b, juste) { if (LUDI) LUDI.skill('maths.multiplication', L.cle(a, b), juste); }
 function ludiProgression() {
   if (!LUDI) return;
@@ -161,22 +173,38 @@ function decoDessin() {
 }
 
 // ---------- Icônes son ----------
-function iconeMusique(c, w, h, actif) {
-  const s = h * 0.06; c.fillStyle = actif && S.volMusique > 0 ? '#fff' : '#5b63a8';
+// Éteint : l'icône passe en gris ET est barrée (on le voit à la forme, pas seulement à la couleur).
+const GRIS = '#5b63a8';
+function barre(c, w, h) { c.strokeStyle = C.rouge; c.lineWidth = 4; c.beginPath(); c.moveTo(-w * 0.3, -h * 0.3); c.lineTo(w * 0.3, h * 0.3); c.stroke(); }
+function iconeMusique(c, w, h) {
+  const s = h * 0.06; c.fillStyle = son.musique ? '#fff' : GRIS;
   c.fillRect(-s * 2, -s * 5, s * 6, s * 1.5); c.fillRect(-s * 2, -s * 5, s * 1.4, s * 8); c.fillRect(s * 3, -s * 5, s * 1.4, s * 6.5);
   c.fillRect(-s * 4.4, s * 2, s * 3.6, s * 2.6); c.fillRect(s * 0.6, s * 0.5, s * 3.6, s * 2.6);
-  if (S.volMusique <= 0) { c.strokeStyle = C.rouge; c.lineWidth = 4; c.beginPath(); c.moveTo(-w * 0.3, -h * 0.3); c.lineTo(w * 0.3, h * 0.3); c.stroke(); }
+  if (!son.musique) barre(c, w, h);
 }
-function iconeHP(c, w, h) {
-  const s = h * 0.07; c.fillStyle = S.volBruitages > 0 ? '#fff' : '#5b63a8';
+function dessinHP(c, w, h, on) {
+  const s = h * 0.07; c.fillStyle = on ? '#fff' : GRIS;
   c.fillRect(-s * 5, -s * 2, s * 3, s * 4);
   c.beginPath(); c.moveTo(-s * 2, -s * 2); c.lineTo(s * 1.5, -s * 5); c.lineTo(s * 1.5, s * 5); c.lineTo(-s * 2, s * 2); c.fill();
-  if (S.volBruitages > 0) { c.fillRect(s * 3, -s * 2, s, s * 4); c.fillRect(s * 5, -s * 4, s, s * 8); }
-  else { c.strokeStyle = C.rouge; c.lineWidth = 4; c.beginPath(); c.moveTo(-w * 0.3, -h * 0.3); c.lineTo(w * 0.3, h * 0.3); c.stroke(); }
+  if (on) { c.fillRect(s * 3, -s * 2, s, s * 4); c.fillRect(s * 5, -s * 4, s, s * 8); }
+  else barre(c, w, h);
+}
+function iconeHP(c, w, h) { dessinHP(c, w, h, son.bruitages); }
+function iconeEcouter(c, w, h) { dessinHP(c, w, h, true); }
+// La voix qui lit les textes : une tête de profil qui parle.
+const PROFIL = [[-5, -6], [-1, -6], [0.6, -4.6], [0.6, -2.6], [2.3, -0.4], [0.6, 0.1], [0.6, 2.6], [-1.4, 3.2], [-1.4, 5.6], [-5.2, 5.6], [-5.2, 2.2], [-6.6, 0], [-6.6, -4.6]];
+function iconeVoix(c, w, h) {
+  const s = h * 0.06, on = son.voix; c.fillStyle = on ? '#fff' : GRIS;
+  c.save(); c.translate(-s * 0.6, 0);
+  c.beginPath(); PROFIL.forEach(([x, y], i) => i ? c.lineTo(x * s, y * s) : c.moveTo(x * s, y * s)); c.closePath(); c.fill();
+  if (on) { c.fillRect(s * 3.4, -s * 1.8, s, s * 3.2); c.fillRect(s * 5.4, -s * 3.8, s, s * 7.2); }
+  c.restore();
+  if (!on) barre(c, w, h);
 }
 function boutonsSon(x, y, t) {
-  bouton('musique', x, y, t, t, { couleur: C.violet, dessin: iconeMusique }, () => { sv.musique = sv.musique > 0 ? 0 : 0.7; S.volMusique = sv.musique; S.appliquerVolumes(); sauver(); });
-  bouton('hp', x + t + 12, y, t, t, { couleur: C.violet, dessin: iconeHP }, () => { sv.bruitages = sv.bruitages > 0 ? 0 : 1; S.volBruitages = sv.bruitages; S.appliquerVolumes(); sauver(); S.sfx('clic'); });
+  bouton('musique', x, y, t, t, { couleur: C.violet, dessin: iconeMusique }, () => reglerSon({ musique: !son.musique }));
+  bouton('hp', x + t + 12, y, t, t, { couleur: C.violet, dessin: iconeHP }, () => { reglerSon({ bruitages: !son.bruitages }); S.sfx('clic'); });
+  bouton('voix', x + 2 * (t + 12), y, t, t, { couleur: C.violet, dessin: iconeVoix }, () => reglerSon({ voix: !son.voix }));
 }
 function boutonRetour(x, y) {
   // Dans Ludiworld, le bouton « ← Ludiworld » du launcher occupe le coin haut gauche (~120 px de large) : on se met à sa droite.
@@ -317,7 +345,7 @@ function ecranTitre(dt) {
   }
 
   boutonsSon(20, H - 84, 64);
-  boutonPleinEcran(20 + 2 * (64 + 12), H - 84, 64);
+  boutonPleinEcran(20 + 3 * (64 + 12), H - 84, 64);
   if (!AUTONOME && !DANS_LUDI) bouton('installer', W - 230, H - 84, 210, 64, { texte: 'Installer', taille: 26, couleur: C.vert }, installer);
   if (aide) dessinerAide();
 }
@@ -1405,7 +1433,7 @@ function repondreCarte(savais) {
 
 function dire(q) {
   try {
-    if (!window.speechSynthesis) return;
+    if (!window.speechSynthesis || !son.voix) return;
     const x = L.astuce(q.a, q.b);
     const lisible = s2 => s2.replace(/×/g, ' fois ').replace(/−/g, ' moins ').replace(/→/g, ', ').replace(/=/g, ' égale ');
     const u = new SpeechSynthesisUtterance(lisible(`${q.a} × ${q.b} = ${x.resultat}. ${x.titre}. ${x.calcul}.`));
@@ -1449,7 +1477,8 @@ function ecranCartes(dt) {
   if (!dos) devantCarte(q, cw, ch); else dosCarte(q, cw, ch);
   ctx.restore();
   if (!dos) bouton('carte', cx - cw / 2, cy - ch / 2, cw, ch, { couleur: 'rgba(0,0,0,0)', fond: 'rgba(0,0,0,0)', flou: 0, epaisseur: 0.01 }, retourner);
-  if (F.etape === 'dos' && window.speechSynthesis) bouton('ecouter', cx + cw / 2 - 70, cy + ch / 2 - 70, 56, 56, { couleur: C.violet, dessin: iconeHP }, () => dire(q));
+  // la voix éteinte dans les réglages du son : pas de bouton écouter
+  if (F.etape === 'dos' && window.speechSynthesis && son.voix) bouton('ecouter', cx + cw / 2 - 70, cy + ch / 2 - 70, 56, 56, { couleur: C.violet, dessin: iconeEcouter }, () => dire(q));
 
   // boutons du bas
   const by = cy + ch / 2 + 18, bh = Math.min(84, H - by - 14);
@@ -1785,11 +1814,10 @@ function editerNom() {
 
 // ---------- Démarrage ----------
 charger();
-// Une sauvegarde plus récente venue d'un autre appareil : elle remplace la nôtre, sauf le son (propre à chaque appareil).
+// Une sauvegarde plus récente venue d'un autre appareil : elle remplace la nôtre (le son n'y est plus : Ludiworld le règle).
 if (window.Ludi) window.Ludi.onRestore(d => {
   if (!d || d.v !== 1) return;
-  const musique = sv.musique, bruitages = sv.bruitages;
-  sv = Object.assign(L.nouvelleSauvegarde(), d, { musique, bruitages });
+  sv = sansSon(Object.assign(L.nouvelleSauvegarde(), d));
   try { localStorage.setItem(CLE, JSON.stringify(sv)); } catch (e) {}
   ludiEtat();
 });
@@ -1803,5 +1831,5 @@ Promise.race([document.fonts ? document.fonts.load('40px PS2').then(() => docume
   .finally(() => requestAnimationFrame(boucle));
 
 // pour les tests automatiques
-window.__jeu = { cinematique, get cineOuverte() { return cineOuverte; }, finCourse: () => finCourse(), get F() { return F; }, lancerCartes, retourner, repondreCarte, get R() { return R; }, get ecran() { return ecran; }, lancerCourse, touche, aller, sv: () => sv, set choixCoupe(v) { choixCoupe = v; } };
+window.__jeu = { get son() { return son; }, cinematique, get cineOuverte() { return cineOuverte; }, finCourse: () => finCourse(), get F() { return F; }, lancerCartes, retourner, repondreCarte, get R() { return R; }, get ecran() { return ecran; }, lancerCourse, touche, aller, sv: () => sv, set choixCoupe(v) { choixCoupe = v; } };
 })();

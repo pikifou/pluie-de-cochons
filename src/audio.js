@@ -1,10 +1,12 @@
-// Sons : bruitages synthétisés (Web Audio), musiques en boucle, voix enregistrées.
+// Sons : bruitages synthétisés (Web Audio), musiques en boucle, voix enregistrées (des exclamations : comptées avec les bruitages).
+// Allumé ou éteint, c'est Ludiworld qui le dit (Ludi.onSon, réglé par game.js) ; ici, seulement le mixage.
 (function () {
 'use strict';
 const A = {
   ctx: null, master: null, sfxBus: null, musBus: null, voiceBus: null,
   buffers: {}, musique: null, musiqueNom: null,
-  volMusique: 0.7, volBruitages: 1,
+  volMusique: 0.7, volBruitages: 1,   // niveaux de mixage, fixes
+  musiqueOn: true, bruitagesOn: true, // le réglage de Ludiworld : tout allumé au départ
   pret: false,
 };
 
@@ -26,9 +28,10 @@ A.init = function () {
 
 A.appliquerVolumes = function () {
   if (!A.ctx) return;
-  A.sfxBus.gain.value = 0.55 * A.volBruitages;
-  A.voiceBus.gain.value = 1.1 * A.volBruitages;
-  A.musBus.gain.setTargetAtTime(0.42 * A.volMusique * (A.duck || 1), A.ctx.currentTime, 0.08);
+  const bruitages = A.bruitagesOn ? A.volBruitages : 0, musique = A.musiqueOn ? A.volMusique : 0;
+  A.sfxBus.gain.value = 0.55 * bruitages;
+  A.voiceBus.gain.value = 1.1 * bruitages;
+  A.musBus.gain.setTargetAtTime(0.42 * musique * (A.duck || 1), A.ctx.currentTime, 0.08);
 };
 
 function b64ToBuf(dataUrl) {
@@ -55,6 +58,13 @@ A.chargerTout = async function () {
   if (A.musiqueVoulue) A.jouerMusique(A.musiqueVoulue, true);
 };
 
+// Le réglage de Ludiworld : { musique, bruitages } (la voix qui lit les textes est dans game.js).
+A.regler = function (o) {
+  A.musiqueOn = o.musique !== false; A.bruitagesOn = o.bruitages !== false;
+  if (!A.bruitagesOn && voixEnCours) { try { voixEnCours.stop(); } catch (e) {} }
+  A.appliquerVolumes();
+};
+
 // ---------- Musique ----------
 A.jouerMusique = function (nom, force) {
   A.musiqueVoulue = nom;
@@ -78,7 +88,7 @@ A.baisserMusique = function (f) { A.duck = f; A.appliquerVolumes(); };
 // ---------- Voix ----------
 let voixEnCours = null;
 A.voix = function (nom) {
-  if (!A.ctx || A.volBruitages <= 0) return;
+  if (!A.ctx || !A.bruitagesOn) return;
   const buf = A.buffers['v_' + nom];
   if (!buf) return;
   if (voixEnCours) { try { voixEnCours.stop(); } catch (e) {} }
@@ -118,7 +128,7 @@ const GAMME = [0, 2, 4, 7, 9]; // pentatonique
 function note(i, base) { const o = Math.floor(i / 5), n = GAMME[((i % 5) + 5) % 5]; return base * Math.pow(2, (o * 12 + n) / 12); }
 
 A.sfx = function (nom, p) {
-  if (!A.ctx || A.volBruitages <= 0) return;
+  if (!A.ctx || !A.bruitagesOn) return;
   const t = A.ctx.currentTime;
   switch (nom) {
     case 'touche': osc('square', 660 + (p || 0) * 30, t, 0.06, 0.18); break;
