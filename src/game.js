@@ -81,6 +81,7 @@ const couleurPlace = p => p === 1 ? '#ffd23f' : p === 2 ? '#dfe8f5' : p === 3 ? 
 // ---------- Écrans ----------
 let ecran = 'titre', tEcran = 0;
 function aller(e) {
+  conseilOuvert = null;
   if (e === ecran) return;
   if (ecran === 'titre') { try { history.pushState({ e }, ''); } catch (x) {} }
   ecran = e; tEcran = 0;
@@ -99,7 +100,8 @@ function parent() {
 }
 // bouton Retour (écran) ou retour Android
 function retour(depuisHistorique) {
-  if (ecran === 'course') {
+  if (conseilOuvert) conseilOuvert = null;
+  else if (ecran === 'course') {
     if (R) R.pauseMenu = !R.pauseMenu;
   } else if (ecran !== 'titre') {
     ecran = parent(); tEcran = 0; S.sfx('whoosh'); S.jouerMusique('menu');
@@ -341,7 +343,9 @@ function ecranTitre(dt) {
   } else {
     const gap = 22, bw = Math.min(340, (W - 80 - 2 * gap) / 3), bh = 82;
     const y0 = by + 68;
-    modes.forEach((m, i) => bouton(m.id, cx - (3 * bw + 2 * gap) / 2 + i * (bw + gap), y0, bw, bh, { texte: m.texte, taille: Math.min(26, bw / 13), police: 'titre', dy: -12, sous: m.sous, tailleSous: 20, couleur: m.couleur, flou: 18 }, m.action));
+    // le mot le plus long tient dans son bouton, même sur un écran 4:3
+    const tm = Math.min(26, 26 * (bw - 28) / Math.max(...modes.map(m => G.largeur(ctx, m.texte, 26, 'titre'))));
+    modes.forEach((m, i) => bouton(m.id, cx - (3 * bw + 2 * gap) / 2 + i * (bw + gap), y0, bw, bh, { texte: m.texte, taille: tm, police: 'titre', dy: -12, sous: m.sous, tailleSous: 20, couleur: m.couleur, flou: 18 }, m.action));
   }
 
   boutonsSon(20, H - 84, 64);
@@ -529,7 +533,75 @@ function ecranDepart(dt) {
   G.texte(ctx, msg, W / 2, yb, 24, C.jaune, {});
   const bw = Math.min(420, W * 0.8), bh = 84;
   bouton('partez', W / 2 - bw / 2, Math.min(H - bh - 20, yb + 30), bw, bh, { texte: 'C\'EST PARTI !', taille: 30, police: 'titre', couleur: C.vert, flou: 20 + Math.sin(temps * 6) * 8 }, () => {
-    lancerCourse({ mode: 'coupe', coupe: cp.id, classe: cl.id });
+    lancerAvecConseil({ mode: 'coupe', coupe: cp.id, classe: cl.id });
+  });
+}
+
+// =====================================================================
+// LE CONSEIL : apprendre, puis s'entraîner, avant de courir (sans jamais bloquer)
+// =====================================================================
+let conseilOuvert = null;     // { c, o, cle }
+const conseilsPasses = new Set();   // « quand même » : on ne redemande pas pendant cette partie
+function lancerAvecConseil(o) {
+  const cle = o.mode === 'coupe' ? 'coupe:' + o.coupe : 'table:' + o.table;
+  const c = conseilsPasses.has(cle) ? null : L.conseil(sv, o.mode === 'coupe' ? { coupe: o.coupe } : { table: o.table });
+  if (!c) { lancerCourse(o); return; }
+  conseilOuvert = { c, o, cle };
+  S.sfx('whoosh');
+}
+function textesConseil(k) {
+  const c = k.c, table = 'la table de ' + c.table + '.';
+  if (k.o.mode !== 'coupe') return { titre: 'UN CONSEIL', lignes: ['Tu n\'as pas encore appris', table, 'Le mieux, c\'est d\'aller', 'd\'abord dans Apprendre.'], passer: 'Y ALLER QUAND MÊME' };
+  if (!c.appris && !c.entraine) return { titre: 'TU ES SÛR ?', lignes: ['Tu veux vraiment faire la course ?', 'Tu n\'as pas encore appris', 'ni entraîné ' + table, 'Commence par apprendre !'], passer: 'COURIR QUAND MÊME' };
+  if (!c.appris) return { titre: 'UN CONSEIL', lignes: ['Tu n\'as pas encore appris', table, 'Pour réussir la course,', 'le plus simple : va apprendre !'], passer: 'COURIR QUAND MÊME' };
+  return { titre: 'UN CONSEIL', lignes: ['Tu ne t\'es pas encore entraîné', 'à ' + table, 'Pour réussir la course,', 'le plus simple : entraîne-toi !'], passer: 'COURIR QUAND MÊME' };
+}
+function parlerConseil(x) {
+  try {
+    if (!window.speechSynthesis || !son.voix) return;
+    const u = new SpeechSynthesisUtterance(x.lignes.join(' '));
+    u.lang = 'fr-FR'; u.rate = 0.9;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  } catch (e) {}
+}
+function dessinerConseil() {
+  const k = conseilOuvert, x = textesConseil(k);
+  ctx.fillStyle = 'rgba(4,6,24,0.97)'; ctx.fillRect(0, 0, W, H);
+  boutons = [];
+  const cx = W / 2, pw = Math.min(620, W - 32);
+  const ps = PORTRAIT ? 130 : Math.min(110, H * 0.16);
+  const tt = Math.min(44, W / 12);
+  const lh = PORTRAIT ? 46 : Math.min(40, H * 0.055);
+  const bw = Math.min(420, W - 40), bh = PORTRAIT ? 96 : Math.min(80, H * 0.11), gap = PORTRAIT ? 20 : 12;
+  // le tout centré dans la hauteur de l'écran
+  const hauteur = ps + 40 + tt * 0.8 + 24 + x.lignes.length * lh + bh + gap + bh * 0.78;
+  const yHaut = Math.max(16, (H - hauteur) / 2);
+  let y = yHaut;
+  ctx.save(); ctx.shadowColor = C.rose; ctx.shadowBlur = 24;
+  G.portrait(ctx, 'heros', cx - ps / 2, y + Math.sin(temps * 3) * 4, ps);
+  ctx.restore();
+  y += ps + 40;
+  // police du texte : celle des titres n'a pas les accents (« SÛR » deviendrait « SUR »)
+  G.texteFige(ctx, x.titre, cx, y, tt, C.jaune, { lueur: C.jaune, contour: '#1a0630' });
+  y += tt * 0.8 + 24;
+  x.lignes.forEach((l, i) => {
+    const t0 = 30, t = Math.min(t0, t0 * (pw - 20) / G.largeur(ctx, l, t0));
+    G.texte(ctx, l, cx, y + i * lh, t, i < x.lignes.length - 1 ? '#fff' : C.jaune, {});
+  });
+  y += x.lignes.length * lh;
+  if (window.speechSynthesis && son.voix) bouton('conseil-ecouter', cx + pw / 2 - 64, yHaut, 56, 56, { couleur: C.violet, dessin: iconeEcouter }, () => parlerConseil(x));
+  const yb = Math.min(y, H - bh - bh * 0.78 - gap - 16);
+  const t = k.c.table, aller = k.c.aller;
+  const pulse = 20 + Math.sin(temps * 6) * 8;
+  bouton('conseil-aller', cx - bw / 2, yb, bw, bh, aller === 'apprendre'
+    ? { texte: 'APPRENDRE', taille: 30, police: 'titre', dy: -12, sous: 'la table de ' + t, tailleSous: 22, couleur: C.violet, flou: pulse }
+    : { texte: 'M\'ENTRAÎNER', taille: 30, police: 'titre', dy: -12, sous: 'la table de ' + t, tailleSous: 22, couleur: C.cyan, flou: pulse }, () => {
+    conseilOuvert = null;
+    if (aller === 'apprendre') lancerCartes(t); else lancerCourse({ mode: 'entrainement', table: t });
+  });
+  const bw2 = Math.min(360, W - 60);
+  bouton('conseil-passer', cx - bw2 / 2, yb + bh + gap, bw2, bh * 0.78, { texte: x.passer, taille: 28, couleur: '#7d86c9', flou: 4 }, () => {
+    conseilsPasses.add(k.cle); conseilOuvert = null; lancerCourse(k.o);
   });
 }
 
@@ -1311,8 +1383,8 @@ function ecranResultats(dt) {
 function boutonsFin(y) {
   const bw = Math.min(300, (W - 60) / 2), bh = 72;
   bouton('rejouer', W / 2 - bw - 10, y, bw, bh, { texte: 'REJOUER', taille: 28, police: 'titre', couleur: C.vert }, () => {
-    if (FIN.mode === 'coupe') { lancerCourse({ mode: 'coupe', coupe: FIN.coupe, classe: FIN.classe }); }
-    else lancerCourse({ mode: 'entrainement', table: FIN.table });
+    if (FIN.mode === 'coupe') { lancerAvecConseil({ mode: 'coupe', coupe: FIN.coupe, classe: FIN.classe }); }
+    else lancerAvecConseil({ mode: 'entrainement', table: FIN.table });
   });
   bouton('suite', W / 2 + 10, y, bw, bh, { texte: FIN.mode === 'coupe' ? 'COUPES' : 'TABLES', taille: 28, police: 'titre', couleur: C.cyan }, () => {
     ecran = FIN.mode === 'coupe' ? 'coupes' : 'tables'; tEcran = 0; S.sfx('whoosh');
@@ -1385,11 +1457,24 @@ function ecranAstuces(dt) {
     const x = W / 2 - (cols * bw + (cols - 1) * gap) / 2 + c * (bw + gap), y = top + r * (bh + gap);
     const connue = L.tableConnue(sv.maitrise, t);
     bouton('as' + t, x, y, bw, bh, { texte: '×' + t, taille: bh * 0.36, police: 'titre', dy: -bh * 0.12, couleur: connue ? C.vert : C.cyan, sous: NOM_ASTUCE[t], tailleSous: Math.min(20, bw / 9), flou: 8 }, () => lancerCartes(t));
+    marqueFois(x + bw, y, L.foisAppris(sv, t));
   }
   const rows = Math.ceil(10 / cols);
   const yb = top + rows * (bh + gap) + 10;
   const bw2 = Math.min(460, W - 40);
   bouton('difficiles', W / 2 - bw2 / 2, yb, bw2, 84, { texte: 'MES CARTES DIFFICILES', taille: Math.min(24, bw2 / 22), police: 'titre', couleur: C.rose, dy: -10, sous: 'les 10 que tu connais le moins', tailleSous: 18 }, () => lancerCartes(null));
+}
+
+// Une coche et le nombre de fois où les cartes de la table ont été finies (rien tant qu'on ne l'a jamais faite).
+function marqueFois(xd, y, n) {
+  if (!n) return;
+  const txt = n + ' fois', h = 34, tw = G.largeur(ctx, txt, 20), w = tw + 52;
+  const x = xd - w + 10, y0 = y - 14;
+  G.rectNeon(ctx, x, y0, w, h, C.vert, { fond: '#0f3a2a', flou: 6, epaisseur: 2, coin: h / 2 });
+  ctx.save(); ctx.strokeStyle = C.vert; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(x + 12, y0 + h * 0.52); ctx.lineTo(x + 19, y0 + h * 0.74); ctx.lineTo(x + 31, y0 + h * 0.28); ctx.stroke();
+  ctx.restore();
+  G.texte(ctx, txt, x + 40 + tw / 2, y0 + h / 2 + 1, 20, '#fff', {});
 }
 
 function lancerCartes(table) {
@@ -1425,6 +1510,7 @@ function repondreCarte(savais) {
   F.i++;
   if (F.i >= F.cartes.length) {
     F.etape = 'fin'; F.t = 0;
+    if (F.table) { L.noterAppris(sv, F.table); sauver(); }
     ludiFinManche('cartes');
     const n = F.sues;
     setTimeout(() => { S.sfx(n >= 8 ? 'trophee' : 'parfait'); S.voix(n >= 9 ? 'parfait' : n >= 7 ? 'bravo' : 'super'); }, 300);
@@ -1628,7 +1714,7 @@ function ecranTables(dt) {
   for (let i = 1; i <= 10; i++) {
     const y = y0 + i * cs;
     const connue = L.tableConnue(sv.maitrise, i);
-    bouton('t' + i, x0, y + 2, cs * 1.3, cs - 4, { texte: '×' + i, taille: cs * (i === 10 ? 0.34 : 0.42), police: 'titre', couleur: connue ? C.vert : C.cyan, flou: 6 }, () => lancerCourse({ mode: 'entrainement', table: i }));
+    bouton('t' + i, x0, y + 2, cs * 1.3, cs - 4, { texte: '×' + i, taille: cs * (i === 10 ? 0.34 : 0.42), police: 'titre', couleur: connue ? C.vert : C.cyan, flou: 6 }, () => lancerAvecConseil({ mode: 'entrainement', table: i }));
     const rt = L.recordTable(sv, i);
     G.texte(ctx, rt != null ? fmt(rt).replace(' s', '') : '--', xr + cs, y + cs / 2, cs * (rt != null && rt >= 60 ? 0.24 : 0.3), rt != null ? C.jaune : '#5b63a8', { police: 'titre' });
     for (let j = 1; j <= 10; j++) {
@@ -1667,6 +1753,9 @@ function redim() {
   const cw = Math.floor(iw * k), ch = Math.floor(ih * k);
   if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
   ECH = Math.min(cw, ch) / 720;
+  // En hauteur mais peu allongé (fenêtre de PC, tablette) : on réduit tout pour garder au moins 1250 de haut,
+  // sinon les écrans pensés pour le téléphone se chevauchent (les boutons de l'écran titre sur le cochon).
+  if (ch > cw * 1.05) ECH = Math.min(ECH, ch / 1250);
   W = cw / ECH; H = ch / ECH;
   PORTRAIT = H > W * 1.05;
   G.grille.redim(W, H);
@@ -1699,6 +1788,7 @@ function boucle(now) {
     case 'astuces': ecranAstuces(dt); break;
     case 'cartes': ecranCartes(dt); break;
   }
+  if (conseilOuvert) dessinerConseil();
   G.dessinerParticules(ctx);
   G.dessinerPops(ctx);
   ctx.restore();
@@ -1831,5 +1921,5 @@ Promise.race([document.fonts ? document.fonts.load('40px PS2').then(() => docume
   .finally(() => requestAnimationFrame(boucle));
 
 // pour les tests automatiques
-window.__jeu = { get son() { return son; }, cinematique, get cineOuverte() { return cineOuverte; }, finCourse: () => finCourse(), get F() { return F; }, lancerCartes, retourner, repondreCarte, get R() { return R; }, get ecran() { return ecran; }, lancerCourse, touche, aller, sv: () => sv, set choixCoupe(v) { choixCoupe = v; } };
+window.__jeu = { get son() { return son; }, cinematique, get cineOuverte() { return cineOuverte; }, finCourse: () => finCourse(), get F() { return F; }, lancerCartes, retourner, repondreCarte, get R() { return R; }, get ecran() { return ecran; }, lancerCourse, touche, aller, sv: () => sv, set choixCoupe(v) { choixCoupe = v; }, lancerAvecConseil, get conseil() { return conseilOuvert; }, boutons: () => boutons.map(b => ({ id: b.id, x: b.x, y: b.y, w: b.w, h: b.h })) };
 })();

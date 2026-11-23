@@ -271,11 +271,43 @@ function enregistrerTable(sv, table, temps) {
   const ancien = r.temps;
   const record = ancien == null || temps < ancien;
   if (record) r.temps = temps;
+  r.fois = foisEntraine(sv, table) + 1;
   r.historique = (r.historique || []).concat([temps]).slice(-8);
   sv.recordsTables[table] = r;
   return { record, ancien, historique: r.historique.slice() };
 }
 function recordTable(sv, table) { const r = sv.recordsTables && sv.recordsTables[table]; return r ? r.temps : null; }
+
+// ---------- Apprendre, puis s'entraîner, avant la course ----------
+// Combien de fois l'enfant a fini les cartes d'une table, et combien de fois il s'est entraîné dessus.
+// Une vieille sauvegarde n'a pas de compte d'entraînements : on prend ses derniers temps.
+function noterAppris(sv, table) {
+  if (!sv.appris) sv.appris = {};
+  sv.appris[table] = foisAppris(sv, table) + 1;
+}
+function foisAppris(sv, table) { return (sv.appris && sv.appris[table]) || 0; }
+function foisEntraine(sv, table) {
+  const r = sv.recordsTables && sv.recordsTables[table];
+  if (!r) return 0;
+  return r.fois != null ? r.fois : (r.historique || []).length;
+}
+// Le conseil avant de lancer un entraînement ({ table }) ou une course ({ coupe }), ou null.
+// On ne regarde que les tables pas encore connues ; une coupe déjà gagnée ne demande rien.
+// Pas appris : aller apprendre (même si on s'est entraîné). Appris sans entraînement : aller s'entraîner.
+function conseil(sv, quoi) {
+  const etat = t => ({ table: t, appris: foisAppris(sv, t) > 0, entraine: foisEntraine(sv, t) > 0 });
+  if (quoi.table != null) {
+    if (tableConnue(sv.maitrise, quoi.table) || foisAppris(sv, quoi.table) > 0) return null;
+    return Object.assign({ aller: 'apprendre' }, etat(quoi.table));
+  }
+  if (CLASSES.some(cl => meilleurTrophee(sv, quoi.coupe, cl.id) > 0)) return null;
+  const aVoir = coupe(quoi.coupe).tables.filter(t => !tableConnue(sv.maitrise, t)).map(etat);
+  const pasAppris = aVoir.find(e => !e.appris);
+  if (pasAppris) return Object.assign({ aller: 'apprendre' }, pasAppris);
+  const pasEntraine = aVoir.find(e => !e.entraine);
+  if (pasEntraine) return Object.assign({ aller: 'entrainement' }, pasEntraine);
+  return null;
+}
 
 function meilleurTrophee(sv, coupeId, classeId) {
   const r = sv.records[cleRecord(coupeId, classeId)];
@@ -372,6 +404,7 @@ const API = {
   nouvelleCourse, questionCourante, verdict, repondre,
   nouvelleSauvegarde, cleRecord, coupesDebloquees, enregistrer, meilleurTrophee, enregistrerTable, recordTable,
   fini, coupesOr,
+  noterAppris, foisAppris, foisEntraine, conseil,
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else root.L = API;

@@ -147,3 +147,81 @@ test('fin : fini avec un trophée à la Coupe Étoile, coupes d\'or sur 15', () 
   assert.strictEqual(L.fini(sv), true);
   assert.strictEqual(L.coupesOr(sv).n, 4);
 });
+
+// ---------- Apprendre, puis s'entraîner, avant la course (ADR-002 de la factory) ----------
+function connaitre(sv, t) { for (let x = 1; x <= 10; x++) for (let i = 0; i < 4; i++) L.noter(sv.maitrise, t, x, true, 1); }
+
+test('chaque paquet de cartes d\'une table est compté', () => {
+  const sv = L.nouvelleSauvegarde();
+  assert.strictEqual(L.foisAppris(sv, 7), 0);
+  L.noterAppris(sv, 7); L.noterAppris(sv, 7);
+  assert.strictEqual(L.foisAppris(sv, 7), 2);
+  assert.strictEqual(L.foisAppris(sv, 6), 0);
+});
+
+test('chaque entraînement d\'une table est compté, même au-delà des 8 derniers temps', () => {
+  const sv = L.nouvelleSauvegarde();
+  assert.strictEqual(L.foisEntraine(sv, 3), 0);
+  for (let i = 0; i < 10; i++) L.enregistrerTable(sv, 3, 30 + i);
+  assert.strictEqual(L.foisEntraine(sv, 3), 10);
+});
+
+test('une vieille sauvegarde garde ses entraînements', () => {
+  const sv = L.nouvelleSauvegarde();
+  sv.recordsTables = { 4: { temps: 20, historique: [25, 20] } };
+  assert.strictEqual(L.foisEntraine(sv, 4), 2);
+  L.enregistrerTable(sv, 4, 22);
+  assert.strictEqual(L.foisEntraine(sv, 4), 3);
+});
+
+test('entraînement : conseiller d\'apprendre une table jamais apprise', () => {
+  const sv = L.nouvelleSauvegarde();
+  assert.deepStrictEqual(L.conseil(sv, { table: 7 }), { aller: 'apprendre', table: 7, appris: false, entraine: false });
+  L.noterAppris(sv, 7);
+  assert.strictEqual(L.conseil(sv, { table: 7 }), null);
+});
+
+test('entraînement : pas de conseil pour une table déjà connue', () => {
+  const sv = L.nouvelleSauvegarde();
+  connaitre(sv, 7);
+  assert.strictEqual(L.conseil(sv, { table: 7 }), null);
+});
+
+test('course : ni appris ni entraîné, aller apprendre', () => {
+  const sv = L.nouvelleSauvegarde();
+  assert.deepStrictEqual(L.conseil(sv, { coupe: 'gland' }), { aller: 'apprendre', table: 6, appris: false, entraine: false });
+});
+
+test('course : entraîné sans avoir appris, aller apprendre', () => {
+  const sv = L.nouvelleSauvegarde();
+  L.enregistrerTable(sv, 6, 30); L.enregistrerTable(sv, 7, 30);
+  assert.deepStrictEqual(L.conseil(sv, { coupe: 'gland' }), { aller: 'apprendre', table: 6, appris: false, entraine: true });
+});
+
+test('course : appris sans s\'être entraîné, aller s\'entraîner', () => {
+  const sv = L.nouvelleSauvegarde();
+  L.noterAppris(sv, 6); L.noterAppris(sv, 7);
+  L.enregistrerTable(sv, 6, 30);
+  assert.deepStrictEqual(L.conseil(sv, { coupe: 'gland' }), { aller: 'entrainement', table: 7, appris: true, entraine: false });
+});
+
+test('course : tout appris et entraîné, pas de conseil', () => {
+  const sv = L.nouvelleSauvegarde();
+  for (const t of [6, 7]) { L.noterAppris(sv, t); L.enregistrerTable(sv, t, 30); }
+  assert.strictEqual(L.conseil(sv, { coupe: 'gland' }), null);
+});
+
+test('course : les tables déjà connues ne demandent rien', () => {
+  const sv = L.nouvelleSauvegarde();
+  connaitre(sv, 6);
+  L.noterAppris(sv, 7);
+  assert.deepStrictEqual(L.conseil(sv, { coupe: 'gland' }), { aller: 'entrainement', table: 7, appris: true, entraine: false });
+  connaitre(sv, 7);
+  assert.strictEqual(L.conseil(sv, { coupe: 'gland' }), null);
+});
+
+test('course : pas de conseil pour une coupe déjà gagnée', () => {
+  const sv = L.nouvelleSauvegarde();
+  L.enregistrer(sv, 'gland', '50', 1);
+  assert.strictEqual(L.conseil(sv, { coupe: 'gland' }), null);
+});
